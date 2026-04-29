@@ -1,0 +1,24 @@
+# The Anger Practice - Todo
+
+- [ ] Generate 40 themed hero images
+- [ ] Upload 40 images to Bunny CDN at /library/lib-01..40.webp
+- [ ] Build Paul Voice Gate lib
+- [ ] Build DeepSeek V4-Pro generator (OpenAI SDK compat)
+- [ ] Build assignHeroImage() with hardcoded Bunny creds
+- [ ] Build verified-asins.json (Amazon, tag=spankyspinola-20)
+- [ ] Build 5 in-code node-cron runners (article publisher, product spotlight, monthly, quarterly, asin health)
+- [ ] Build scripts/start-with-cron.mjs
+- [ ] Build scripts/bulk-seed.mjs (500 topic queue)
+- [ ] Seed 30 initial published articles
+- [ ] Homepage (journal masthead, vertical article stream)
+- [ ] About page (Oracle Lover, theoraclelover.com link)
+- [ ] Article page (two-column, theoraclelover.com byline, floating share rail, bio at bottom)
+- [ ] 9 assessments (interactive quizzes)
+- [ ] 40 herbs/supplements page with verified ASINs
+- [ ] The Fire Toolkit (recommended products)
+- [ ] Privacy policy (Amazon Associate + health disclaimer)
+- [ ] /health endpoint on server
+- [ ] .do/app.yaml for DigitalOcean
+- [ ] Remove susandrury references (N/A, none exist)
+- [ ] Create GitHub repo peacefulgeek/anger-practice
+- [ ] Push to peacefulgeek/anger-practice
