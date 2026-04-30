@@ -22,3 +22,8 @@
 - [ ] Remove susandrury references (N/A, none exist)
 - [ ] Create GitHub repo peacefulgeek/anger-practice
 - [ ] Push to peacefulgeek/anger-practice
+
+## Bunny password in code (user request)
+- [ ] Hardcode Bunny credentials in src/lib/config.ts
+- [ ] Remove env fallbacks; grep for BUNNY_STORAGE_PASSWORD
+- [ ] Commit + push to peacefulgeek/anger-practice

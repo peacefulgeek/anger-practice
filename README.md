@@ -65,7 +65,7 @@ node scripts/compile-articles.mjs
 
 1. Point Railway at this repo.
 2. Nixpacks detects `nixpacks.toml`, installs pnpm + Node 22.
-3. Set env vars from `ENV_TEMPLATE.md` (OPENAI_API_KEY, BUNNY_STORAGE_PASSWORD, …).
+3. Set env vars from `ENV_TEMPLATE.md` (OPENAI_API_KEY is the only one you'd typically override; Bunny credentials are hardcoded in `src/lib/config.ts`).
 4. Railway runs `node dist/index.js` and keeps the cron alive.
 
 ### DigitalOcean App Platform

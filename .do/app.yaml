@@ -28,15 +28,7 @@ services:
         value: https://api.deepseek.com
       - key: OPENAI_MODEL
         value: deepseek-v4-pro
-      - key: BUNNY_PULL_ZONE
-        value: anger-practice.b-cdn.net
-      - key: BUNNY_STORAGE_ZONE
-        value: anger-practice
-      - key: BUNNY_STORAGE_REGION
-        value: ny
-      - key: BUNNY_STORAGE_PASSWORD
-        scope: RUN_AND_BUILD_TIME
-        type: SECRET
+      # Bunny CDN credentials are hardcoded in src/lib/config.ts; no env vars required.
 domains:
   - domain: theangerpractice.com
     type: PRIMARY
