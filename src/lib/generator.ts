@@ -190,7 +190,7 @@ function sleep(ms: number) {
   return new Promise((res) => setTimeout(res, ms));
 }
 
-export async function generateWithRetry(topic: string, maxTries = 4): Promise<GeneratedArticle> {
+export async function generateWithRetry(topic: string, maxTries = 8): Promise<GeneratedArticle> {
   let best: GeneratedArticle | null = null;
   for (let i = 0; i < maxTries; i++) {
     try {
@@ -202,12 +202,12 @@ export async function generateWithRetry(topic: string, maxTries = 4): Promise<Ge
       const msg = (e as Error).message || "";
       console.error(`[generator] attempt ${i + 1} failed:`, msg);
       if (msg.includes("429") || msg.toLowerCase().includes("too many requests") || msg.includes("concurrency")) {
-        // Exponential backoff: 6s, 18s, 54s, 162s
-        const delay = 6000 * Math.pow(3, i);
+        // Linear-stepped backoff: 30s, 60s, 90s, 120s, 150s, 180s, 240s, 300s
+        const delay = Math.min(30000 + i * 30000, 300000);
         console.log(`[generator] rate limited, sleeping ${Math.round(delay / 1000)}s`);
         await sleep(delay);
       } else {
-        await sleep(2000);
+        await sleep(5000);
       }
     }
   }

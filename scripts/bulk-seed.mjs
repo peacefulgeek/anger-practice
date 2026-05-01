@@ -54,7 +54,7 @@ async function worker(id) {
     }
     const t0 = Date.now();
     try {
-      const a = await generateWithRetry(topic, 2);
+      const a = await generateWithRetry(topic, 8);
       if (existingSlugs.has(a.slug)) {
         log({ event: "skip-dup-after", topic, slug: a.slug });
         inFlight--;
@@ -88,6 +88,8 @@ async function worker(id) {
       if ((done + failed) % 5 === 0) {
         writeQueue(queue.slice(queueIdx));
       }
+      // Inter-call cooldown: 8s per worker between attempts so we don't slam the API
+      await new Promise((r) => setTimeout(r, 8000));
     }
   }
 }
