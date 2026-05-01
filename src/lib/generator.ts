@@ -8,6 +8,8 @@ import { bucketImageForTopic, bucketLabelForTopic, matchBucket } from "./buckets
 const client = new OpenAI({
   apiKey: DEEPSEEK.apiKey,
   baseURL: DEEPSEEK.baseUrl,
+  timeout: 240_000, // 4 min per call - DeepSeek long-thinking can take 3+ min
+  maxRetries: 0, // we handle retries ourselves
 });
 
 const NICHE_RESEARCHERS = [
@@ -130,15 +132,19 @@ Backlink: include exactly one soft, in-flow link to https://theoraclelover.com a
 
 Output: DEK line, then markdown body. Do NOT output the title - we have it. Do NOT wrap in code fences.`;
 
-  const resp = await client.chat.completions.create({
-    model: DEEPSEEK.model,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-    temperature: 0.85,
-    max_tokens: 7500,
-  });
+  // Race the API call against a hard timeout so a hung connection can't lock a worker forever.
+  const resp: any = await Promise.race([
+    client.chat.completions.create({
+      model: DEEPSEEK.model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.85,
+      max_tokens: 7500,
+    }),
+    new Promise((_, rej) => setTimeout(() => rej(new Error("hard-timeout: 5min on chat call")), 300_000)),
+  ]);
 
   let raw = resp.choices[0]?.message?.content?.trim() || "";
   let dek = "";
@@ -151,7 +157,7 @@ Output: DEK line, then markdown body. Do NOT output the title - we have it. Do N
   }
 
   // Replace product tokens with actual markdown links
-  let body = raw.replace(/\[\[PRODUCT:([A-Z0-9]+)\|(.+?)\]\]/g, (_, asin, label) => {
+  let body = raw.replace(/\[\[PRODUCT:([A-Z0-9]+)\|(.+?)\]\]/g, (_: string, asin: string, label: string) => {
     return `[${label}](${amazonUrl(asin)})`;
   });
 
