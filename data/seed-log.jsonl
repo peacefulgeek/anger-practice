@@ -40,3 +40,5 @@
 {"ts":"2026-05-01T15:10:19.782Z","event":"fail","topic":"The Daughter Who Stopped Calling","error":"Article too short for: The Daughter Who Stopped Calling (67w)","ms":254680}
 {"ts":"2026-05-01T15:10:49.196Z","event":"fail","topic":"Female Friendship and the Unsaid Resentment","error":"Article generation failed for: Female Friendship and the Unsaid Resentment","ms":31605}
 {"ts":"2026-05-01T15:10:52.976Z","event":"fail","topic":"When You Realize Your Marriage Made You Smaller","error":"Article generation failed for: When You Realize Your Marriage Made You Smaller","ms":33194}
+{"ts":"2026-05-01T15:25:57.054Z","event":"ok","topic":"Female Friendship and the Unsaid Resentment","slug":"female-friendship-and-the-unsaid-resentment","words":2019,"voice":90,"ms":849421}
+{"ts":"2026-05-01T15:29:27.939Z","event":"ok","topic":"When You Realize Your Marriage Made You Smaller","slug":"when-you-realize-your-marriage-made-you-smaller","words":2542,"voice":80,"ms":202880}
