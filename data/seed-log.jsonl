@@ -42,3 +42,7 @@
 {"ts":"2026-05-01T15:10:52.976Z","event":"fail","topic":"When You Realize Your Marriage Made You Smaller","error":"Article generation failed for: When You Realize Your Marriage Made You Smaller","ms":33194}
 {"ts":"2026-05-01T15:25:57.054Z","event":"ok","topic":"Female Friendship and the Unsaid Resentment","slug":"female-friendship-and-the-unsaid-resentment","words":2019,"voice":90,"ms":849421}
 {"ts":"2026-05-01T15:29:27.939Z","event":"ok","topic":"When You Realize Your Marriage Made You Smaller","slug":"when-you-realize-your-marriage-made-you-smaller","words":2542,"voice":80,"ms":202880}
+{"ts":"2026-05-01T15:37:23.402Z","event":"ok","topic":"Divorce Rage: Honest Accounting","slug":"divorce-rage-honest-accounting","words":3196,"voice":80,"ms":467459}
+{"ts":"2026-05-01T15:38:08.114Z","event":"skip-dup","topic":"Female Friendship and the Unsaid Resentment"}
+{"ts":"2026-05-01T15:38:08.118Z","event":"skip-dup","topic":"When You Realize Your Marriage Made You Smaller"}
+{"ts":"2026-05-01T15:38:08.118Z","event":"skip-dup","topic":"Divorce Rage: Honest Accounting"}
