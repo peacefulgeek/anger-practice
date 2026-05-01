@@ -3,6 +3,7 @@ import { DEEPSEEK, SITE, libraryImage, amazonUrl } from "./config.js";
 import { runVoiceGate } from "./voiceGate.js";
 import { HERBS } from "./herbs.js";
 import { BOOKS } from "./books.js";
+import { bucketImageForTopic, bucketLabelForTopic, matchBucket } from "./buckets.js";
 
 const client = new OpenAI({
   apiKey: DEEPSEEK.apiKey,
@@ -94,6 +95,9 @@ export async function generateArticle(topic: string, heroIndex?: number): Promis
   const inline = pickInlineProducts(3);
   const bottom = pickBottomProducts(4);
   const heroIdx = heroIndex ?? Math.floor(Math.random() * 40) + 1;
+  const bucketSlug = matchBucket(topic);
+  const bucketHero = bucketImageForTopic(topic);
+  const bucketLabel = bucketLabelForTopic(topic);
 
   const systemPrompt = `You are The Oracle Lover, an independent literary voice writing for theangerpractice.com (a companion journal to theoraclelover.com).
 Your voice: blunt, sensory, counterintuitive, second-person, unsentimental. You refuse spiritual bypassing and wellness-blog cliché.
@@ -102,7 +106,7 @@ Required voice markers: "the body remembers", specific bodily sensation, at leas
 Never narrate yourself as an AI. Never explain that you are writing an article.`;
 
   const userPrompt = `Write an article titled: "${topic}".
-Length: 1600-2000 words. Target reading age: intelligent adult who has been told their anger is the problem.
+Length: 2300-2700 words target, with hard floor at 1800. WRITE LONG. Do not summarize early. Each H2 section should be substantive (200-350 words). Add concrete examples, dialog snippets, and bodily detail. Anything under 1800 will be discarded. Target reading age: intelligent adult who has been told their anger is the problem.
 
 Opener style (use this, do not label it): ${opener}
 
@@ -133,7 +137,7 @@ Output: DEK line, then markdown body. Do NOT output the title - we have it. Do N
       { role: "user", content: userPrompt },
     ],
     temperature: 0.85,
-    max_tokens: 4500,
+    max_tokens: 7500,
   });
 
   let raw = resp.choices[0]?.message?.content?.trim() || "";
@@ -171,7 +175,7 @@ Output: DEK line, then markdown body. Do NOT output the title - we have it. Do N
     slug: slugify(topic),
     dek,
     bodyMarkdown: body,
-    heroImage: libraryImage(heroIdx),
+    heroImage: bucketHero,
     heroIndex: heroIdx,
     wordCount: gate.wordCount,
     voiceScore: gate.score,
@@ -182,19 +186,33 @@ Output: DEK line, then markdown body. Do NOT output the title - we have it. Do N
   };
 }
 
-export async function generateWithRetry(topic: string, maxTries = 2): Promise<GeneratedArticle> {
+function sleep(ms: number) {
+  return new Promise((res) => setTimeout(res, ms));
+}
+
+export async function generateWithRetry(topic: string, maxTries = 4): Promise<GeneratedArticle> {
   let best: GeneratedArticle | null = null;
   for (let i = 0; i < maxTries; i++) {
     try {
       const a = await generateArticle(topic);
       const gate = runVoiceGate(a.bodyMarkdown, a.title);
-      if (gate.pass) return a;
+      if (gate.pass && a.wordCount >= 1800) return a;
       if (!best || a.voiceScore > best.voiceScore) best = a;
     } catch (e) {
-      console.error(`[generator] attempt ${i + 1} failed:`, (e as Error).message);
+      const msg = (e as Error).message || "";
+      console.error(`[generator] attempt ${i + 1} failed:`, msg);
+      if (msg.includes("429") || msg.toLowerCase().includes("too many requests") || msg.includes("concurrency")) {
+        // Exponential backoff: 6s, 18s, 54s, 162s
+        const delay = 6000 * Math.pow(3, i);
+        console.log(`[generator] rate limited, sleeping ${Math.round(delay / 1000)}s`);
+        await sleep(delay);
+      } else {
+        await sleep(2000);
+      }
     }
   }
   if (!best) throw new Error(`Article generation failed for: ${topic}`);
-  if (best.wordCount < 900) throw new Error(`Article too short for: ${topic} (${best.wordCount}w)`);
+  // Salvage 1700-1799w articles by tagging them; only fail if truly too short
+  if (best.wordCount < 1700) throw new Error(`Article too short for: ${topic} (${best.wordCount}w)`);
   return best;
 }

@@ -27,3 +27,14 @@
 - [ ] Hardcode Bunny credentials in src/lib/config.ts
 - [ ] Remove env fallbacks; grep for BUNNY_STORAGE_PASSWORD
 - [ ] Commit + push to peacefulgeek/anger-practice
+
+## 500-article pre-seed (one-time, in Manus sandbox)
+- [ ] Define 12 image buckets (trauma, couples, women's-rage, parental, somatic, TCM, ayurveda, grief, workplace, spiritual-bypass, boundaries, rituals)
+- [ ] Generate 120 themed images, compressed WebP, uploaded to Bunny /buckets/{bucket}/img-XX.webp
+- [ ] Add bucketMatcher() that scores each topic and picks bucket
+- [ ] Bump min words 1800; max_tokens 7000; voice-gate threshold; hero assignment from matched bucket
+- [ ] Build resumable bulk-seed runner with checkpoint
+- [ ] Run 500 generations in parallel batches
+- [ ] Verify: 500 ≥1800w, all gated, byline, hero on Bunny, only 30 published
+- [ ] Audit: zero Manus deps, all crons in-code only
+- [ ] Commit + push

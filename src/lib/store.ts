@@ -26,7 +26,9 @@ export interface StoredArticle {
   inlineProducts: { asin: string; title: string; link: string }[];
   bottomProducts: { asin: string; title: string; link: string; category: string }[];
   createdAt: string;
-  publishedAt: string;
+  publishedAt: string | null;
+  scheduledFor?: string;
+  published?: boolean;
 }
 
 export function ensureDirs() {
@@ -40,7 +42,11 @@ export function listArticles(): StoredArticle[] {
   const files = fs.readdirSync(ARTICLES_DIR).filter((f) => f.endsWith(".json"));
   return files
     .map((f) => JSON.parse(fs.readFileSync(path.join(ARTICLES_DIR, f), "utf8")) as StoredArticle)
-    .sort((a, b) => (a.publishedAt < b.publishedAt ? 1 : -1));
+    .sort((a, b) => {
+      const ap = a.publishedAt || a.scheduledFor || a.createdAt;
+      const bp = b.publishedAt || b.scheduledFor || b.createdAt;
+      return ap < bp ? 1 : -1;
+    });
 }
 
 export function saveArticle(a: StoredArticle) {

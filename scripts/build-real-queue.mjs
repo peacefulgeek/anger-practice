@@ -1,4 +1,67 @@
-[
+#!/usr/bin/env node
+// Build a queue of 500 DISTINCT, editorially-strong topics for The Anger Practice.
+// No lazy permutations. Each topic is a real essay headline.
+
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const OUT = path.resolve(__dirname, "..", "data", "topics-queue.json");
+fs.mkdirSync(path.dirname(OUT), { recursive: true });
+
+const TOPICS = [
+  // === foundations: 30 ===
+  "Why You Were Taught That Anger Is Wrong (And Why That's Destroying You)",
+  "Anger Is a Boundary: What Your Rage Is Actually Protecting",
+  "The Somatic Release of Anger: How to Get It Out of Your Body",
+  "Suppressed Anger and Disease: What the Research Shows",
+  "Women and Rage: Why Society Fears Female Anger",
+  "The Difference Between Anger and Aggression (And Why It Matters)",
+  "How to Be Angry Without Destroying Your Relationships",
+  "Childhood Anger Suppression and Adult Health",
+  "The Nervous System of Anger: What's Actually Happening",
+  "Anger After Trauma: Why It Surfaces Years Later",
+  "The Spiritual Bypassing of 'Just Let It Go'",
+  "How to Feel Anger in Your Body: A Practice Guide",
+  "Anger and Grief: The Connection Nobody Talks About",
+  "The Pillow Scream, the Forest Howl, and Other Rage Practices",
+  "Why 'Calm Down' Is the Worst Thing You Can Say",
+  "TCM and Anger: Liver Qi Stagnation and Rising Fire",
+  "The Anger Inventory: Naming Every Resentment You're Carrying",
+  "How to Set Boundaries When You've Been People-Pleasing Your Whole Life",
+  "Anger in Meditation: What Happens When Rage Surfaces on the Cushion",
+  "The Freeze Response: When Anger Gets Stuck",
+  "Passive-Aggressive Behavior as Suppressed Rage",
+  "Teaching Children Healthy Anger: What You Never Learned",
+  "Anger and the Workplace: Speaking Up Without Blowing Up",
+  "The Physical Practice of Rage: Movement, Sound, and Breath",
+  "Why Forgiveness Before Anger Is Spiritual Bypassing",
+  "Anger Journaling: The Uncensored Page",
+  "Ayurvedic Pitta and Anger: Cooling the Fire Without Extinguishing It",
+  "The Anger-Shame Cycle: How They Feed Each Other",
+  "How to Support a Partner Who Is Learning to Feel Anger",
+  "Reclaiming Your Fire: When Anger Becomes Power",
+
+  // === women's anger: 40 ===
+  "The Mother Wound and the Rage Underneath",
+  "Why Mothers Apologize for Being Angry",
+  "When Daughters Inherit Their Mother's Silence",
+  "The Good Girl's Rage Diary",
+  "Wives Who Have Been Polite Too Long",
+  "Postpartum Anger Nobody Warns You About",
+  "Perimenopause Rage: The Body Telling the Truth",
+  "The Quiet Fury of the Caregiver",
+  "Friendships That Cannot Hold Your Anger",
+  "When Your Mother Asks You to Be Smaller Again",
+  "The Anger of Being the Strong One",
+  "Why Sisters Fight About Their Mothers",
+  "The Anger You Inherit From Your Grandmother",
+  "Stepmother Rage: The Story No One Lets You Tell",
+  "What Mother-in-Law Conflict Is Really About",
+  "The Daughter Who Stopped Calling",
+  "When Women Compete Instead of Confront",
+  "Workplace Anger as a Woman: The Tax",
   "Female Friendship and the Unsaid Resentment",
   "When You Realize Your Marriage Made You Smaller",
   "Divorce Rage: Honest Accounting",
@@ -21,6 +84,8 @@
   "Sisters Who Were Pitted Against Each Other",
   "When the Family Calls You the Difficult One",
   "Reclaiming the Word 'Bitch'",
+
+  // === relationship: 40 ===
   "Couples Therapy Won't Save You If Anger Is Forbidden",
   "When You're the Only One Who Fights Fair",
   "The Slow Resentment of a Long Marriage",
@@ -61,6 +126,8 @@
   "Anger at the Way Your Partner Eats. Yes.",
   "Resentment About Money in Long Relationships",
   "How to Negotiate Domestic Labor Without Combat",
+
+  // === parenting: 35 ===
   "Why Your Children's Tantrums Trigger Your Rage",
   "When You Realize You're Becoming Your Father",
   "When You Realize You're Becoming Your Mother",
@@ -96,6 +163,8 @@
   "Co-Parenting With a Difficult Ex Without Becoming Bitter",
   "What 'Gentle Parenting' Gets Wrong About Anger",
   "When Your Child Becomes the Parentified One",
+
+  // === trauma & body: 35 ===
   "Polyvagal Theory and Anger: A Field Guide",
   "Fight Response: Why It's Not the Enemy",
   "Flight Response: When Running Becomes a Habit",
@@ -131,6 +200,8 @@
   "Chronic Pain and the Anger of Being Disbelieved",
   "When Massage Releases Rage",
   "When Acupuncture Surfaces Anger",
+
+  // === health systems: 30 ===
   "Liver Fire (Gan Huo) and Modern Life",
   "TCM Liver Qi Stagnation Symptom Map",
   "Bupleurum Formulas for Pent-Up Rage",
@@ -161,6 +232,8 @@
   "Adrenal Fatigue Critique: A Useful Frame Anyway",
   "Vagal Tone and the Anger You Can't Find",
   "Cold Plunges, Saunas, and Anger Discharge",
+
+  // === ritual & culture: 30 ===
   "Designing Your Own Rage Ritual",
   "Fire Rituals for Letting Go (Without Bypassing)",
   "Burning the Letter You Won't Send",
@@ -191,6 +264,8 @@
   "Romani Anger Stories the West Erased",
   "The Anger Songs of the Blues",
   "Anger in Hip Hop as Public Truth",
+
+  // === workplace & money: 30 ===
   "When Your Boss Mistakes Your Calm for Consent",
   "How to Quit Without Burning Down (or Quietly Dying Inside)",
   "The Rage of Underpaid Caregivers",
@@ -221,6 +296,8 @@
   "Public Service Rage: Government Workers Who Saw Too Much",
   "Anger at the Tax System (And What to Do With It)",
   "Anger at Capitalism Without Becoming Useless",
+
+  // === public & political: 30 ===
   "Civic Anger That Doesn't Burn You Out",
   "Climate Grief and Climate Rage: A Working Distinction",
   "Anger at Inaction in a Crisis",
@@ -251,6 +328,8 @@
   "Anger at Statues, Monuments, and Whose Story",
   "Anger at the Erasure of Indigenous Land",
   "Anger Channeled Into Mutual Aid",
+
+  // === spirituality & meaning: 30 ===
   "Anger at God: The Ancient Practice",
   "When Prayer Stops Working and Rage Starts",
   "Spiritual Bypass Bingo Card",
@@ -281,6 +360,8 @@
   "Mourning Rage: The Year After",
   "Annual Anger: The Anniversary Body Knows",
   "Anger as Initiation",
+
+  // === addiction & coping: 25 ===
   "Drinking to Soften Anger and What You Lose",
   "Sober Rage: Year One",
   "Sober Rage: Year Three",
@@ -306,6 +387,8 @@
   "Codependency Rage: When Helping Was the Hide",
   "Caffeine Withdrawal Anger and What It Reveals",
   "Pornography, Privacy, and Suppressed Rage",
+
+  // === practices & toolkits: 30 ===
   "Five Minutes a Day: The Anger Body Scan",
   "The Tennis Ball on the Floor: A Pelvic Practice",
   "Door-Frame Pressing for Stuck Fight Energy",
@@ -336,6 +419,8 @@
   "Body Storming: 90 Seconds of Permission",
   "Floor Work: Where Adults Forget the Floor Exists",
   "The Rage-to-Tears Bridge: A Common Path",
+
+  // === edge cases / specific: 50 ===
   "Anger at Your Dog Who Won't Stop Barking",
   "Anger at the Cat Who Knocks Things Off Tables",
   "Anger at Pet Loss That Surprised You",
@@ -386,6 +471,8 @@
   "Anger at God for the Miscarriage",
   "Anger at God for the Earthquake",
   "Anger at God for the Slow Disappearance",
+
+  // === closure & integration: 25 ===
   "What Comes After the Rage Has Spoken",
   "Rebuilding Trust After You've Finally Spoken Up",
   "When Your Anger Cost You Something Worth It",
@@ -411,6 +498,8 @@
   "What Your Bank Account Reflects After You Stopped Subsidizing Others",
   "What Your Voice Sounds Like After You Used It",
   "Coming Home to Yourself: An Honest Map",
+
+  // === extras to reach 500 ===
   "The Anger of Surviving What You Weren't Meant To",
   "The Anger That Made You Pay Attention",
   "The Anger That Saved Your Life",
@@ -450,5 +539,9 @@
   "Anger as Information About Your Work",
   "Anger as Information About Your Aging",
   "Anger as Information About Your Body",
-  "Anger as Information About Your Future"
-]
+  "Anger as Information About Your Future",
+];
+
+const list = Array.from(new Set(TOPICS));
+fs.writeFileSync(OUT, JSON.stringify(list, null, 2));
+console.log(`Wrote ${list.length} distinct topics to ${OUT}`);
