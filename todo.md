@@ -38,3 +38,13 @@
 - [ ] Verify: 500 ≥1800w, all gated, byline, hero on Bunny, only 30 published
 - [ ] Audit: zero Manus deps, all crons in-code only
 - [ ] Commit + push
+
+## Continuation: get to 500 gated articles in this session
+- [ ] Verify bulk-seed process is alive
+- [ ] If dead, restart at concurrency=2 with hardened backoff
+- [ ] Watch for "best-attempt under 1800" failures and add salvage logic if many
+- [ ] Poll every 30 min, commit/push to GitHub
+- [ ] Reach 500 articles
+- [ ] Verify all 500 ≥1800 words, voice-gated, byline, bucket image
+- [ ] Confirm only first 30 published, rest scheduledFor staggered
+- [ ] Final Manus-free audit + push
