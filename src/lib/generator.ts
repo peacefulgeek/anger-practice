@@ -8,7 +8,7 @@ import { bucketImageForTopic, bucketLabelForTopic, matchBucket } from "./buckets
 const client = new OpenAI({
   apiKey: DEEPSEEK.apiKey,
   baseURL: DEEPSEEK.baseUrl,
-  timeout: 480_000, // 8 min per call - v4-pro reasoning + 2500-word article
+  timeout: 600_000, // 10 min per call - v4-pro reasoning + 2500-word article
   maxRetries: 0, // we handle retries ourselves
 });
 
@@ -132,19 +132,26 @@ Backlink: include exactly one soft, in-flow link to https://theoraclelover.com a
 
 Output: DEK line, then markdown body. Do NOT output the title - we have it. Do NOT wrap in code fences.`;
 
-  // Race the API call against a hard timeout so a hung connection can't lock a worker forever.
-  const resp: any = await Promise.race([
-    client.chat.completions.create({
-      model: DEEPSEEK.model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: 0.85,
-      max_tokens: 16000, // v4-pro burns 2-5k on reasoning before output; need headroom
-    }),
-    new Promise((_, rej) => setTimeout(() => rej(new Error("hard-timeout: 8min on chat call")), 480_000)),
-  ]);
+  // Hard cancel via AbortController so hung connections actually die.
+  const ac = new AbortController();
+  const killT = setTimeout(() => ac.abort(), 600_000); // 10 min hard kill - reasoning takes longer with bigger budget
+  let resp: any;
+  try {
+    resp = await client.chat.completions.create(
+      {
+        model: DEEPSEEK.model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.85,
+        max_tokens: 32000, // v4-pro is reasoning-mode; burns most tokens on chain-of-thought before output
+      },
+      { signal: ac.signal }
+    );
+  } finally {
+    clearTimeout(killT);
+  }
 
   let raw = resp.choices[0]?.message?.content?.trim() || "";
   let dek = "";
