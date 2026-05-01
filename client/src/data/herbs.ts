@@ -1,75 +1,9 @@
-// Mirror of src/lib/herbs.ts for client rendering.
-// Keep in sync - if we change src/lib/herbs.ts, we change this too.
+// Canonical Herb Cabinet — re-exported from src/lib/herbs.ts
+// One source of truth across server, generator, and frontend.
 
-export interface Herb {
-  asin: string;
-  title: string;
-  brand: string;
-  category:
-    | "nervous-system"
-    | "liver-tcm"
-    | "pitta-ayurveda"
-    | "adaptogen"
-    | "magnesium"
-    | "amino-acid"
-    | "aromatherapy";
-  summary: string;
-  mechanism: string;
-  caution: string;
-}
-
-export const CATEGORY_LABEL: Record<Herb["category"], string> = {
-  "nervous-system": "Nervines",
-  "liver-tcm": "TCM · Liver Channel",
-  "pitta-ayurveda": "Ayurveda · Pitta",
-  adaptogen: "Adaptogens",
-  magnesium: "Magnesium",
-  "amino-acid": "Amino Acids",
-  aromatherapy: "Aromatherapy",
-};
+export type { Herb } from "../../../src/lib/herbs";
+export { HERBS, CATEGORY_LABEL } from "../../../src/lib/herbs";
 
 export const AMAZON_TAG = "spankyspinola-20";
-export const amazonUrl = (asin: string) => `https://www.amazon.com/dp/${asin}?tag=${AMAZON_TAG}`;
-
-export const HERBS: Herb[] = [
-  { asin: "B001G7QPNE", title: "NOW Magnesium Glycinate 200 mg (180 tablets)", brand: "NOW Foods", category: "magnesium", summary: "Highly bioavailable chelated magnesium; the form most research uses for nervous-system support.", mechanism: "Magnesium is a cofactor in GABA signaling. Low magnesium correlates with irritability and startle reactivity.", caution: "Can loosen stools. Not for severe kidney disease." },
-  { asin: "B01MRB28VY", title: "Doctor's Best High Absorption Magnesium (240 tablets)", brand: "Doctor's Best", category: "magnesium", summary: "Lysinate/glycinate chelate at a working dose; well-tolerated nightly.", mechanism: "Supports parasympathetic tone; many people notice reduced jaw clenching within 1–2 weeks.", caution: "Start at half dose if you're new to magnesium." },
-  { asin: "B00020I9PE", title: "NOW L-Theanine 200 mg (120 veg capsules)", brand: "NOW Foods", category: "amino-acid", summary: "Green tea amino acid that takes the edge off without sedating.", mechanism: "Increases alpha brainwave activity, raises GABA. Reduces acute stress reactivity within ~40 minutes.", caution: "Some people feel flat on daily high doses; use as needed." },
-  { asin: "B0013OULJ4", title: "Jarrow Formulas Theanine 200 mg (60 capsules)", brand: "Jarrow Formulas", category: "amino-acid", summary: "Clean Suntheanine form; the gold-standard research dose.", mechanism: "Works well alongside caffeine without the jitter.", caution: "Avoid if you take blood-pressure meds without checking with your practitioner." },
-  { asin: "B0719D8GCB", title: "Gaia Herbs Ashwagandha Root (60 capsules)", brand: "Gaia Herbs", category: "adaptogen", summary: "Whole-root extract, not just an isolated marker compound.", mechanism: "Lowers cortisol over 4–8 weeks. Useful when anger has a 'wired-and-tired' flavor.", caution: "Not in pregnancy. Can stimulate thyroid in some people." },
-  { asin: "B001A1NMTY", title: "Himalaya Ashwagandha (60 caplets)", brand: "Himalaya", category: "adaptogen", summary: "Traditional Ayurvedic preparation at a working dose.", mechanism: "Rasayana tonic for depleted fire; cools rage rooted in exhaustion.", caution: "Stop if you feel agitated instead of settled — not everyone gets along with ashwagandha." },
-  { asin: "B0013OXDFS", title: "Gaia Herbs Holy Basil Leaf (60 capsules)", brand: "Gaia Herbs", category: "adaptogen", summary: "Tulsi for the kind of irritability that rides on top of racing thoughts.", mechanism: "Adaptogen with gentle mood-lifting and cortisol-modulating properties.", caution: "Avoid in pregnancy." },
-  { asin: "B00028LZ2G", title: "Nature's Way Passion Flower (100 capsules)", brand: "Nature's Way", category: "nervous-system", summary: "The classic 'anger that won't sleep' herb.", mechanism: "Increases GABA in the central nervous system; blunts the 3 a.m. resentment spiral.", caution: "Sedating — don't combine with alcohol or sleep meds." },
-  { asin: "B0009F3SB4", title: "Gaia Herbs Skullcap (60 capsules)", brand: "Gaia Herbs", category: "nervous-system", summary: "Old-school Western nervine for 'wound-up and can't unclench'.", mechanism: "Relaxes skeletal and smooth muscle, quiets chatter without stupor.", caution: "Buy from reputable brands — some cheap skullcap is adulterated with germander." },
-  { asin: "B00014EB6G", title: "Nature's Way Chamomile Flowers (100 capsules)", brand: "Nature's Way", category: "nervous-system", summary: "Gentle enough to stack with everything else.", mechanism: "Apigenin binds the same GABA-A receptors as a low-dose benzo, but softly.", caution: "Rare ragweed cross-allergy." },
-  { asin: "B00014EB7A", title: "Nature's Way Valerian Root (100 capsules)", brand: "Nature's Way", category: "nervous-system", summary: "Heavier sedative; reserve for 'I am furious and cannot sleep'.", mechanism: "GABAergic and adenosinergic; reduces sleep latency in clinical trials.", caution: "Some people get paradoxical agitation. Smells strongly." },
-  { asin: "B000H7LVSA", title: "Nature's Way Lemon Balm (100 capsules)", brand: "Nature's Way", category: "nervous-system", summary: "Gentle daytime nervine that doesn't flatten you.", mechanism: "Inhibits GABA transaminase; pairs well with theanine for daytime use.", caution: "Can mildly suppress thyroid at high doses." },
-  { asin: "B07KRM6Y9N", title: "Plum Flower Xiao Yao San Teapills (200 pills)", brand: "Plum Flower", category: "liver-tcm", summary: "The formula for 'my liver qi is stuck and I am SICK of everyone'.", mechanism: "Classical TCM formula for liver qi stagnation with spleen deficiency. Moves what's stuck.", caution: "See a TCM practitioner if you're pregnant or on prescription meds." },
-  { asin: "B007NJ7ALG", title: "Plum Flower Long Dan Xie Gan Wan (200 pills)", brand: "Plum Flower", category: "liver-tcm", summary: "Heavier formula for 'rising liver fire' — red face, bitter mouth, explosive anger.", mechanism: "Drains damp-heat from the liver and gallbladder meridians.", caution: "Cooling and bitter — don't take long-term without practitioner guidance." },
-  { asin: "B001GCU1CI", title: "Plum Flower Jia Wei Xiao Yao San (200 pills)", brand: "Plum Flower", category: "liver-tcm", summary: "Xiao Yao San plus moutan and gardenia for the heat-flush version of stuck anger.", mechanism: "Moves liver qi and clears residual heat. Classic PMS-rage formula.", caution: "Moutan is cooling — skip if you tend to feel cold." },
-  { asin: "B072K1VKC6", title: "Prince of Peace Chrysanthemum Tea (100 tea bags)", brand: "Prince of Peace", category: "liver-tcm", summary: "Daily cooling tea for rising liver heat.", mechanism: "Clears heat from the liver channel; traditional for red eyes and short fuse.", caution: "If you run cold, don't drink this daily." },
-  { asin: "B001FD2XOC", title: "Banyan Botanicals Brahmi/Gotu Kola (90 tablets)", brand: "Banyan Botanicals", category: "pitta-ayurveda", summary: "Classic pitta-pacifier for the overheated mind.", mechanism: "Cools the nervous system without dulling it; traditional Ayurvedic medhya rasayana.", caution: "Can be too cooling for vata-dominant people." },
-  { asin: "B075HV67JJ", title: "Banyan Botanicals Pitta Digest (90 tablets)", brand: "Banyan Botanicals", category: "pitta-ayurveda", summary: "Cooling bitter-sweet formula for the fire-in-the-belly version of anger.", mechanism: "Digestive pitta is the first place this doshic imbalance shows up.", caution: "Avoid in pregnancy." },
-  { asin: "B005G85Y2K", title: "Banyan Botanicals Healthy Pitta (90 tablets)", brand: "Banyan Botanicals", category: "pitta-ayurveda", summary: "Daily pitta-balancing formula — Shatavari, Brahmi, Guduchi.", mechanism: "Cools sharp, precise, irritable fire without dousing creative drive.", caution: "Not a substitute for addressing what you're actually angry about." },
-  { asin: "B00020I9H6", title: "NOW Rhodiola 500 mg (60 veg capsules)", brand: "NOW Foods", category: "adaptogen", summary: "For anger that's tangled with burnout.", mechanism: "Russian-research-backed adaptogen; modulates cortisol and serotonin.", caution: "Too stimulating for some at evening dose." },
-  { asin: "B00014EB7K", title: "Nature's Way Motherwort (100 capsules)", brand: "Nature's Way", category: "nervous-system", summary: "The 'lion-hearted mother' nervine for heart-tightening rage.", mechanism: "Bitter cardiotonic; loosens the chest when anger sits in the heart.", caution: "Avoid in pregnancy (uterotonic)." },
-  { asin: "B071ZFDFNB", title: "Herb Pharm Kava Kava Extract (1 oz)", brand: "Herb Pharm", category: "nervous-system", summary: "Short-term use for acute rage that keeps looping.", mechanism: "Kavalactones act on GABA and dopamine; measurably reduces acute anxiety.", caution: "Do NOT combine with alcohol or with other sedatives. Short-term use only." },
-  { asin: "B0019LPA1I", title: "Nutricost GABA 750 mg (180 capsules)", brand: "Nutricost", category: "amino-acid", summary: "Direct GABA supplementation; some people feel it, some don't.", mechanism: "May act on peripheral GABA receptors even if it doesn't fully cross the blood-brain barrier.", caution: "Can cause a skin flush; start at half dose." },
-  { asin: "B00IVGC4EA", title: "NOW Glycine 1000 mg (100 veg capsules)", brand: "NOW Foods", category: "amino-acid", summary: "Inhibitory neurotransmitter that smooths the edges before sleep.", mechanism: "Lowers core body temperature, improves sleep-onset and depth.", caution: "Very well tolerated; rarely GI upset at high doses." },
-  { asin: "B007RMX2OI", title: "NOW Taurine 1000 mg (100 veg capsules)", brand: "NOW Foods", category: "amino-acid", summary: "Inhibitory amino acid; good for 'electric' rage.", mechanism: "Calms neuronal excitability; supports cardiovascular tone.", caution: "Avoid if you have bipolar disorder without a practitioner's guidance." },
-  { asin: "B01MYFJWTZ", title: "Sports Research Ashwagandha KSM-66 (60 softgels)", brand: "Sports Research", category: "adaptogen", summary: "Standardized KSM-66 extract with black pepper for absorption.", mechanism: "Research-backed for chronic stress and sleep quality.", caution: "Not in pregnancy; can shift thyroid labs." },
-  { asin: "B00ENKE0RM", title: "Moon Juice Magnesi-Om (4.2 oz powder)", brand: "Moon Juice", category: "magnesium", summary: "Magnesium + L-theanine stack in a drink form — convenient evening ritual.", mechanism: "Three magnesium forms (gluconate, citrate, acetyl taurinate) plus calming aminos.", caution: "Pricey per serving; taste is marmite." },
-  { asin: "B00F23LHJA", title: "doTERRA Lavender Essential Oil (15 mL)", brand: "doTERRA", category: "aromatherapy", summary: "Single most-researched calming essential oil.", mechanism: "Inhaled lavender reduces cortisol and heart rate in clinical trials.", caution: "Topical requires carrier oil; do not ingest without guidance." },
-  { asin: "B0006IEOP6", title: "NOW Lavender Essential Oil (4 oz)", brand: "NOW Foods", category: "aromatherapy", summary: "Larger, more affordable bottle from a reputable brand.", mechanism: "Linalool and linalyl acetate; same calming compounds, same evidence.", caution: "Store away from heat and light." },
-  { asin: "B008PEX8YE", title: "Plant Therapy Vetiver Essential Oil (10 mL)", brand: "Plant Therapy", category: "aromatherapy", summary: "Deep, earthy, grounding oil when rage feels ungrounded.", mechanism: "Heavy sesquiterpenes; traditionally used for scattered, spiky emotion.", caution: "Thick — dilute well." },
-  { asin: "B005A5FO9M", title: "NOW Roman Chamomile Essential Oil (1/3 oz)", brand: "NOW Foods", category: "aromatherapy", summary: "Expensive but specific — for acute moments of irritability.", mechanism: "Esters (angelate compounds) are particularly nervine.", caution: "Ragweed cross-allergy possible." },
-  { asin: "B072Q6XTDM", title: "Banyan Botanicals Brahmi Ghee (5.5 oz)", brand: "Banyan Botanicals", category: "pitta-ayurveda", summary: "Brahmi-infused ghee — a half-teaspoon at night cools the fire-mind.", mechanism: "Lipid-soluble delivery of brahmi compounds; classical Ayurvedic medhya nasya base.", caution: "Dairy." },
-  { asin: "B003PGE98Y", title: "Banyan Botanicals Mental Clarity (90 tablets)", brand: "Banyan Botanicals", category: "pitta-ayurveda", summary: "Brahmi/Gotu Kola/Shankhapushpi for overstimulated, snappy minds.", mechanism: "Sattvic nervine blend; classical Ayurvedic anti-pitta.", caution: "Not in pregnancy." },
-  { asin: "B01FTXO3EM", title: "Traditional Medicinals Cup of Calm Tea (16 tea bags)", brand: "Traditional Medicinals", category: "nervous-system", summary: "Chamomile/lemon balm/passionflower — the evening reset tea.", mechanism: "Three classic nervines in one cup.", caution: "Drink before 8 p.m. if you're caffeine-sensitive at all." },
-  { asin: "B01GEADOGI", title: "Traditional Medicinals Nighty Night (16 tea bags)", brand: "Traditional Medicinals", category: "nervous-system", summary: "For 'furious and cannot stop replaying that conversation'.", mechanism: "Chamomile, passionflower, linden, catnip — multiple nervines.", caution: "Some find valerian pungent; this doesn't include it." },
-  { asin: "B00I7JHC2S", title: "Yogi Kava Stress Relief Tea (16 tea bags)", brand: "Yogi", category: "nervous-system", summary: "Gentle daily kava tea blended with nervines.", mechanism: "Lower kava dose than extracts — good for daily use.", caution: "Still: don't stack with alcohol." },
-  { asin: "B0006PL0KI", title: "NOW 5-HTP 100 mg (120 veg capsules)", brand: "NOW Foods", category: "amino-acid", summary: "Serotonin precursor for anger with a depressive undertone.", mechanism: "Raises serotonin availability; sometimes helpful when rage rides grief.", caution: "Do NOT combine with SSRI/SNRI. Check with a practitioner." },
-  { asin: "B007WK0E56", title: "Plum Flower An Shen Bu Xin Wan (200 pills)", brand: "Plum Flower", category: "liver-tcm", summary: "'Calm the spirit, tonify the heart' — for rage with insomnia.", mechanism: "Heart-blood deficiency formula; settles an 'unsettled spirit'.", caution: "See a TCM practitioner if symptoms are severe." },
-  { asin: "B003P9XG4C", title: "Gaia Herbs Adrenal Health Daily Support (60 capsules)", brand: "Gaia Herbs", category: "adaptogen", summary: "Ashwagandha/rhodiola/holy basil stack for chronic depletion-rage.", mechanism: "Combination adaptogen formula; works on cortisol rhythm.", caution: "Contains multiple stimulating adaptogens — start at half dose." },
-  { asin: "B004GJYTF8", title: "Gaia Herbs SleepThru (60 capsules)", brand: "Gaia Herbs", category: "nervous-system", summary: "Ashwagandha, magnolia, passionflower — targets rage-fueled insomnia.", mechanism: "Addresses nocturnal cortisol spikes plus GABAergic nervines.", caution: "Sedating. Not with alcohol." },
-];
+export const amazonUrl = (asin: string) =>
+  `https://www.amazon.com/dp/${asin}?tag=${AMAZON_TAG}`;

@@ -9,10 +9,15 @@ const CATEGORY_ORDER: Herb["category"][] = [
   "nervous-system",
   "liver-tcm",
   "pitta-ayurveda",
+  "vata-ayurveda",
   "adaptogen",
   "magnesium",
   "amino-acid",
   "aromatherapy",
+  "mushroom",
+  "vitamin-mineral",
+  "flower-essence",
+  "herbal-tea",
 ];
 
 export default function Herbs() {
@@ -20,10 +25,15 @@ export default function Herbs() {
     "nervous-system": [],
     "liver-tcm": [],
     "pitta-ayurveda": [],
+    "vata-ayurveda": [],
     adaptogen: [],
     magnesium: [],
     "amino-acid": [],
     aromatherapy: [],
+    mushroom: [],
+    "vitamin-mineral": [],
+    "flower-essence": [],
+    "herbal-tea": [],
   };
   HERBS.forEach((h) => byCategory[h.category].push(h));
 
@@ -33,19 +43,20 @@ export default function Herbs() {
       <section className="border-b border-[color-mix(in_oklch,var(--ink)_14%,var(--paper))]">
         <div className="container py-16 grid lg:grid-cols-12 gap-10 items-center">
           <div className="lg:col-span-7">
-            <div className="dateline mb-4">Forty · Verified · Tagged</div>
+            <div className="dateline mb-4">{HERBS.length} · Verified · Tagged</div>
             <h1 className="masthead text-[var(--ink)] text-[2.25rem] sm:text-[4rem]">
               The Herb Cabinet.
             </h1>
             <p className="dek mt-5 max-w-xl">
-              Forty herbs, supplements, and formulas that help the body work with anger —
-              not around it. Every product is verified by ASIN and linked with our Amazon
-              Associates tag. Nothing here is medical advice.
+              {HERBS.length} herbs, supplements, formulas, and rituals that help the body work
+              with anger — not around it. Every product is verified by ASIN and linked with our
+              Amazon Associates tag. Nothing here is medical advice.
             </p>
             <p className="mt-5 text-sm text-[var(--muted-foreground)] max-w-xl">
-              Grouped by modality: nervines (Western herbalism), liver-channel formulas (TCM),
-              pitta-pacifiers (Ayurveda), adaptogens, magnesium forms, targeted amino acids,
-              and a few essential oils that hold up under research.
+              Grouped by modality: Western nervines, TCM liver-channel formulas, pitta and vata
+              Ayurvedic blends, adaptogens, magnesium and amino acids, mushrooms, vitamins,
+              flower essences, herbal teas, and aromatherapy. Pick what your nervous system can
+              actually use.
             </p>
           </div>
           <div className="lg:col-span-5">
@@ -168,5 +179,16 @@ function categoryBlurb(c: Herb["category"]): string {
       return "Specific amino acids — theanine, glycine, taurine, 5-HTP — can soften the acute edge of anger or help the nervous system settle. Use with respect and check for interactions.";
     case "aromatherapy":
       return "Smell bypasses cortex and goes straight to the amygdala. Lavender, vetiver, and Roman chamomile all have real research behind them for acute nervous-system regulation.";
+    case "vata-ayurveda":
+      return "When anger comes paired with anxiety, scattered thinking, and an ungrounded body, vata is aggravated. Grounding oils, warm grain-rich foods, and rooting herbs settle the storm.";
+    case "mushroom":
+      return "Reishi, lion's mane, and the wider mushroom kingdom rebuild stress tolerance over weeks. Reishi is the spirit-soother; lion's mane quiets the rumination loop that keeps anger alive after the trigger is gone.";
+    case "vitamin-mineral":
+      return "Boring foundation work. B-vitamins, vitamin D, and omega-3s are cofactors and substrates for every neurotransmitter your nervous system uses. Test before megadosing; supplement before reacting.";
+    case "flower-essence":
+      return "Subtle, vibrational, and ritualised. Whether you read flower essences as homeopathy, somatic ritual, or placebo done with care, the practice of taking the dropper is itself the medicine.";
+    case "herbal-tea":
+      return "The cup-of-tea ritual is half the medicine. Slowing down to brew chamomile, kava, holy basil, or oat straw teaches the nervous system that there is, in fact, time.";
   }
+  return "";
 }
