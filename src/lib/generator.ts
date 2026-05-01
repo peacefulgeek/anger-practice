@@ -8,7 +8,7 @@ import { bucketImageForTopic, bucketLabelForTopic, matchBucket } from "./buckets
 const client = new OpenAI({
   apiKey: DEEPSEEK.apiKey,
   baseURL: DEEPSEEK.baseUrl,
-  timeout: 240_000, // 4 min per call - DeepSeek long-thinking can take 3+ min
+  timeout: 480_000, // 8 min per call - v4-pro reasoning + 2500-word article
   maxRetries: 0, // we handle retries ourselves
 });
 
@@ -141,9 +141,9 @@ Output: DEK line, then markdown body. Do NOT output the title - we have it. Do N
         { role: "user", content: userPrompt },
       ],
       temperature: 0.85,
-      max_tokens: 7500,
+      max_tokens: 16000, // v4-pro burns 2-5k on reasoning before output; need headroom
     }),
-    new Promise((_, rej) => setTimeout(() => rej(new Error("hard-timeout: 5min on chat call")), 300_000)),
+    new Promise((_, rej) => setTimeout(() => rej(new Error("hard-timeout: 8min on chat call")), 480_000)),
   ]);
 
   let raw = resp.choices[0]?.message?.content?.trim() || "";
@@ -200,7 +200,9 @@ export async function generateWithRetry(topic: string, maxTries = 8): Promise<Ge
   let best: GeneratedArticle | null = null;
   for (let i = 0; i < maxTries; i++) {
     try {
+      console.log(`[gen] try ${i + 1}/${maxTries}: ${topic.slice(0, 60)}`);
       const a = await generateArticle(topic);
+      console.log(`[gen] try ${i + 1} got ${a.wordCount}w v=${a.voiceScore}`);
       const gate = runVoiceGate(a.bodyMarkdown, a.title);
       if (gate.pass && a.wordCount >= 1800) return a;
       if (!best || a.voiceScore > best.voiceScore) best = a;

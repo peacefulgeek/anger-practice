@@ -123,3 +123,7 @@
 {"ts":"2026-05-01T18:23:02.611Z","event":"ok","topic":"Anger at Other Parents at the Playground","slug":"anger-at-other-parents-at-the-playground","words":1893,"voice":90,"ms":201888}
 {"ts":"2026-05-01T18:25:33.246Z","event":"skip-dup","topic":"Anger at Other Parents at the Playground"}
 {"ts":"2026-05-01T18:27:37.639Z","event":"skip-dup","topic":"Anger at Other Parents at the Playground"}
+{"ts":"2026-05-01T18:29:50.907Z","event":"skip-dup","topic":"Anger at Other Parents at the Playground"}
+{"ts":"2026-05-01T18:32:26.345Z","event":"skip-dup","topic":"Anger at Other Parents at the Playground"}
+{"ts":"2026-05-01T18:34:59.966Z","event":"ok","topic":"Anger When Your Child Is the One Bullying","slug":"anger-when-your-child-is-the-one-bullying","words":2570,"voice":80,"ms":153619}
+{"ts":"2026-05-01T18:35:13.486Z","event":"ok","topic":"Sibling Rivalry as Adult Resentment","slug":"sibling-rivalry-as-adult-resentment","words":3196,"voice":80,"ms":167137}
