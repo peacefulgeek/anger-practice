@@ -99,9 +99,9 @@ export default function About() {
           </Link>
           <Link href="/herbs" className="journal-card p-6 no-underline">
             <div className="dateline mb-2">The Cabinet</div>
-            <div className="masthead text-2xl text-[var(--ink)]">Forty Herbs</div>
+            <div className="masthead text-2xl text-[var(--ink)]">203 Herbs &amp; Supplements</div>
             <p className="text-sm text-[var(--muted-foreground)] mt-2">
-              Nervines, TCM formulas, pitta-pacifiers, and amino acids.
+              Two hundred verified herbs, formulas, and supplements across twelve modalities.
             </p>
           </Link>
           <Link href="/fire-toolkit" className="journal-card p-6 no-underline">

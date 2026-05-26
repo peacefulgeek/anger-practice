@@ -22,7 +22,7 @@ anger, rage work, somatic release, and the body's wisdom. Not an influencer blog
   passive-aggression, liver fire TCM, pitta Ayurveda, anger/grief,
   childhood rules, rage-readiness)
 - `/assessments/:slug` — Interactive Likert assessment with scored bands
-- `/herbs` — Forty verified-ASIN herbs & supplements, grouped by modality
+- `/herbs` — 203 verified-ASIN herbs, supplements, formulas, and rituals across twelve modalities
 - `/fire-toolkit` — Nine body-first practices
 - `/about` — Editorial stance and byline
 - `/privacy` — Disclosures + Amazon Associates + not-medical-advice
@@ -63,10 +63,14 @@ node scripts/compile-articles.mjs
 
 ### Railway (recommended for one-off + cron)
 
+See [`DEPLOY-RAILWAY.md`](./DEPLOY-RAILWAY.md) for the full checklist (env vars,
+volume mount, smoke tests, rollback). Short version:
+
 1. Point Railway at this repo.
 2. Nixpacks detects `nixpacks.toml`, installs pnpm + Node 22.
-3. Set env vars from `ENV_TEMPLATE.md` (OPENAI_API_KEY is the only one you'd typically override; Bunny credentials are hardcoded in `src/lib/config.ts`).
-4. Railway runs `node dist/index.js` and keeps the cron alive.
+3. Set env vars from `ENV_TEMPLATE.md` (`OPENAI_API_KEY` is the only one you'd typically override; Bunny credentials are hardcoded in `src/lib/config.ts`).
+4. **Mount a persistent volume** at `/app/data` and set `DATA_ROOT=/app/data`, otherwise cron-generated articles disappear on redeploy.
+5. Railway runs `node dist/index.js` and keeps the in-process crons alive.
 
 ### DigitalOcean App Platform
 
@@ -89,7 +93,9 @@ dist/
 - Banned patterns include "delve into", "tapestry of", "in today's fast-paced
   world", "embark on a journey", and about 40 others.
 - Paul Wagner and related names are banned.
-- Articles under 900 words are rejected and requeued.
+- Articles under 1,800 words are gated out of the public bundle by `scripts/cap-published.mjs`.
+- `pnpm cap:published` re-runs the cap any time — keeps the public list at 100 articles, all ≥1,800 words.
+- Voice-gate rejects raw generations under 900 words and requeues them.
 
 ## License
 

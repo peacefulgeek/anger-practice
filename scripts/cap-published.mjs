@@ -2,15 +2,19 @@
 /**
  * cap-published.mjs
  *
- * One-time normalizer: ensure no more than 100 articles are published; gate the rest
- * with staggered future `scheduledFor` dates so the in-process publish-cron will roll
- * them out at its normal cadence (one every 6 hours).
+ * Enforces TWO rules at once:
+ *   (1) No more than 100 articles are publicly visible.
+ *   (2) EVERY published article has wordCount >= MIN_WORDS (default 1800).
  *
- * Rules:
- *  - The 100 OLDEST articles (by publishedAt if present, else by file mtime) stay published.
- *  - Everything else gets:  published=false, publishedAt=null, scheduledFor=future-stagger.
- *  - Staggers every 6 hours starting from "now" (so first gated piece goes live in 6h, etc.)
- *  - Safe to re-run.
+ * Algorithm:
+ *   - Read every article from data/articles/*.json.
+ *   - Drop any article with wordCount < MIN_WORDS from the pool of candidates
+ *     eligible for publication — those are always gated.
+ *   - From the remaining (>=1800w) pool, pick the OLDEST 100 (by publishedAt
+ *     if present, else by createdAt, else by mtime) and mark them published.
+ *   - Everything else is gated with staggered scheduledFor every 6h.
+ *
+ * Re-runnable. Idempotent for a given file set.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -18,8 +22,9 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ART_DIR = path.resolve(__dirname, "..", "data", "articles");
-const CAP = 100;
-const HOURS_BETWEEN = 6;
+const CAP = Number(process.env.CAP || 100);
+const MIN_WORDS = Number(process.env.MIN_WORDS || 1800);
+const HOURS_BETWEEN = Number(process.env.HOURS_BETWEEN || 6);
 
 if (!fs.existsSync(ART_DIR)) {
   console.error(`[cap] missing ${ART_DIR}`);
@@ -40,22 +45,30 @@ for (const f of files) {
   const mtime = fs.statSync(full).mtimeMs;
   const sortKey =
     (data.publishedAt && new Date(data.publishedAt).getTime()) ||
+    (data.createdAt && new Date(data.createdAt).getTime()) ||
     (data.scheduledFor && new Date(data.scheduledFor).getTime()) ||
     mtime;
-  articles.push({ file: full, name: f, data, sortKey });
+  articles.push({ file: full, name: f, data, sortKey, wc: data.wordCount || 0 });
 }
 
-// Oldest first
-articles.sort((a, b) => a.sortKey - b.sortKey);
+// Eligible to be published: meets the word-count floor
+const eligible = articles.filter((a) => a.wc >= MIN_WORDS).sort((a, b) => a.sortKey - b.sortKey);
+const tooShort = articles.filter((a) => a.wc < MIN_WORDS);
+
+const publishedSet = new Set(eligible.slice(0, CAP).map((a) => a.file));
 
 const nowMs = Date.now();
 let pubCount = 0;
 let gateCount = 0;
 let gateIdx = 0;
+let shortGated = 0;
 
-for (const a of articles) {
-  if (pubCount < CAP) {
-    // Keep / coerce to published
+// Pass 1: write published flags for eligible-and-picked
+// Pass 2: gate everything else (including all too-short articles)
+const sortedAll = articles.slice().sort((a, b) => a.sortKey - b.sortKey);
+
+for (const a of sortedAll) {
+  if (publishedSet.has(a.file)) {
     a.data.published = true;
     if (!a.data.publishedAt) {
       a.data.publishedAt = new Date(a.sortKey || nowMs).toISOString();
@@ -63,23 +76,26 @@ for (const a of articles) {
     a.data.scheduledFor = a.data.publishedAt;
     pubCount++;
   } else {
-    // Gate
     a.data.published = false;
     a.data.publishedAt = null;
     const futureMs = nowMs + (gateIdx + 1) * HOURS_BETWEEN * 60 * 60 * 1000;
     a.data.scheduledFor = new Date(futureMs).toISOString();
     gateIdx++;
     gateCount++;
+    if (a.wc < MIN_WORDS) shortGated++;
   }
   fs.writeFileSync(a.file, JSON.stringify(a.data, null, 2) + "\n");
 }
 
-console.log(`[cap] total:      ${articles.length}`);
-console.log(`[cap] published:  ${pubCount}`);
-console.log(`[cap] gated:      ${gateCount}`);
-console.log(`[cap] gate stagger: every ${HOURS_BETWEEN}h starting in ${HOURS_BETWEEN}h`);
-console.log(
-  `[cap] last gated unlock: ${new Date(
-    nowMs + gateIdx * HOURS_BETWEEN * 60 * 60 * 1000,
-  ).toISOString()}`,
-);
+console.log(`[cap] MIN_WORDS=${MIN_WORDS}  CAP=${CAP}  HOURS_BETWEEN=${HOURS_BETWEEN}`);
+console.log(`[cap] total:                ${articles.length}`);
+console.log(`[cap] eligible (>=${MIN_WORDS}w): ${eligible.length}`);
+console.log(`[cap] too-short (gated):    ${tooShort.length}`);
+console.log(`[cap] published (final):    ${pubCount}`);
+console.log(`[cap] gated (final):        ${gateCount}  (of which ${shortGated} are short)`);
+if (pubCount < CAP) {
+  console.warn(
+    `[cap] WARNING: only ${pubCount} eligible articles met the ${MIN_WORDS}-word floor; ` +
+      `cap of ${CAP} not reached. Generate more long-form pieces to fill it.`,
+  );
+}

@@ -56,7 +56,7 @@
     }
   ],
   "createdAt": "2026-05-01T16:55:05.601Z",
-  "publishedAt": "2026-05-21T22:55:05.601Z",
-  "scheduledFor": "2026-05-21T22:55:05.601Z",
-  "published": true
+  "publishedAt": null,
+  "scheduledFor": "2026-06-09T04:15:10.563Z",
+  "published": false
 }
