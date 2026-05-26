@@ -3,12 +3,20 @@ import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
 import { startCrons } from "../src/cron/index.js";
-import { listArticles } from "../src/lib/store.js";
+import { listArticles, bootstrapStore } from "../src/lib/store.js";
+import { activeDriver } from "../src/lib/bunnyStore.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 async function startServer() {
+  // Bootstrap article store FIRST so listArticles() has data to serve.
+  // In bunny mode this pulls the article JSON cache down from Bunny on boot.
+  const boot = await bootstrapStore();
+  console.log(
+    `[store] driver=${boot.driver} pulled=${boot.pulled} cached=${boot.total}`,
+  );
+
   const app = express();
   const server = createServer(app);
 
@@ -28,6 +36,7 @@ async function startServer() {
         ok: true,
         site: "anger-practice",
         articles: arts.length,
+        storageDriver: activeDriver(),
         autoGen: (process.env.AUTO_GEN_ENABLED ?? "true").toLowerCase() === "true",
         deepseekModel: process.env.OPENAI_MODEL || "deepseek-v4-pro",
         time: new Date().toISOString(),

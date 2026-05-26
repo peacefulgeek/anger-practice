@@ -1,21 +1,33 @@
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
+import {
+  activeDriver,
+  putArticle as putArticleRemote,
+  deleteArticle as deleteArticleRemote,
+  listSlugs as listSlugsRemote,
+  fullResyncFromBunny,
+  readQueueRemote,
+  writeQueueRemote,
+  BUNNY_PATHS,
+} from "./bunnyStore.js";
 
-// Articles are stored as individual JSON files + a master index.
-// In production they are bundled into the build via scripts/compile-articles.mjs
-// which writes to client/src/data/articles.json so the client can import them.
-//
-// We anchor paths off process.cwd() so they resolve identically in dev (tsx from
-// project root) and prod (Railway/Nixpacks runs `node dist/index.js` with cwd at
-// the project root). The DATA_ROOT env var lets Railway volumes override the
-// default location — e.g. set DATA_ROOT=/data when mounting a persistent volume.
+/**
+ * Storage layer for articles. Two drivers are supported:
+ *   - "local": pure local filesystem (default in dev)
+ *   - "bunny": Bunny Storage as source of truth, local-disk used as cache
+ *             (default in production / Railway)
+ *
+ * The server boots, runs `syncCacheFromBunny()` once, then all read paths
+ * stay synchronous against the local cache. Writes go through `saveArticle`
+ * which updates both Bunny and the cache.
+ */
 
 const ROOT = process.cwd();
 export const DATA_ROOT = process.env.DATA_ROOT
   ? path.resolve(process.env.DATA_ROOT)
   : path.resolve(ROOT, "data");
-export const ARTICLES_DIR = path.join(DATA_ROOT, "articles");
-export const QUEUE_FILE = path.join(DATA_ROOT, "topics-queue.json");
+export const ARTICLES_DIR = BUNNY_PATHS.CACHE_ART_DIR;
+export const QUEUE_FILE = BUNNY_PATHS.CACHE_QUEUE;
 export const CLIENT_BUNDLE = path.resolve(ROOT, "client", "src", "data", "articles.json");
 
 export interface StoredArticle {
@@ -48,8 +60,8 @@ export function ensureDirs() {
  *   - publishedAt exists and is in the past
  *   - scheduledFor (if set) is in the past
  *
- * Gated drafts (published: false OR future scheduledFor) are excluded from the
- * public list. The publish-cron promotes them as their `scheduledFor` matures.
+ * Gated drafts (published: false OR future scheduledFor) are excluded from
+ * the public list.
  */
 export function isLive(a: StoredArticle, now: Date = new Date()): boolean {
   if (a.published !== true) return false;
@@ -60,6 +72,22 @@ export function isLive(a: StoredArticle, now: Date = new Date()): boolean {
     if (s.getTime() > now.getTime()) return false;
   }
   return true;
+}
+
+/**
+ * Boot hook. Call this once during server startup. In bunny mode it pulls
+ * any missing article files from Bunny into the local cache.
+ */
+export async function bootstrapStore(): Promise<{ driver: string; pulled: number; total: number }> {
+  ensureDirs();
+  const driver = activeDriver();
+  if (driver === "bunny") {
+    // Force-pull every article on boot so Bunny stays authoritative even if
+    // the container has a stale local cache. ~5 MB / 6s for 171 articles.
+    const pulled = await fullResyncFromBunny();
+    return { driver, pulled, total: fs.readdirSync(ARTICLES_DIR).filter((f) => f.endsWith(".json")).length };
+  }
+  return { driver, pulled: 0, total: fs.readdirSync(ARTICLES_DIR).filter((f) => f.endsWith(".json")).length };
 }
 
 export function listAllArticles(): StoredArticle[] {
@@ -75,42 +103,57 @@ export function listAllArticles(): StoredArticle[] {
 }
 
 /**
- * Public listing — only live articles. This is the function the server API
- * and the client bundle should always use.
+ * Public listing — only live articles.
  */
 export function listArticles(): StoredArticle[] {
   const now = new Date();
   return listAllArticles().filter((a) => isLive(a, now));
 }
 
-export function saveArticle(a: StoredArticle) {
+/**
+ * Persist a single article. Writes to Bunny (if active driver) AND the local
+ * cache, then refreshes the client bundle.
+ */
+export async function saveArticle(a: StoredArticle): Promise<void> {
   ensureDirs();
-  fs.writeFileSync(path.join(ARTICLES_DIR, `${a.slug}.json`), JSON.stringify(a, null, 2));
+  const body = JSON.stringify(a, null, 2);
+  await putArticleRemote(a.slug, body);
   rebuildClientBundle();
 }
 
+/**
+ * Local-cache existence check. Use after `bootstrapStore` so the cache is
+ * warm.
+ */
 export function articleExists(slug: string): boolean {
   return fs.existsSync(path.join(ARTICLES_DIR, `${slug}.json`));
 }
 
-export function readQueue(): string[] {
-  ensureDirs();
-  return JSON.parse(fs.readFileSync(QUEUE_FILE, "utf8")) as string[];
+export async function deleteArticle(slug: string): Promise<void> {
+  await deleteArticleRemote(slug);
 }
 
-export function writeQueue(q: string[]) {
-  fs.writeFileSync(QUEUE_FILE, JSON.stringify(q, null, 2));
+export async function readQueue(): Promise<string[]> {
+  return await readQueueRemote();
 }
 
-export function popQueue(): string | null {
-  const q = readQueue();
+export async function writeQueue(q: string[]): Promise<void> {
+  await writeQueueRemote(q);
+}
+
+export async function popQueue(): Promise<string | null> {
+  const q = await readQueueRemote();
   if (!q.length) return null;
   const topic = q.shift()!;
-  writeQueue(q);
+  await writeQueueRemote(q);
   return topic;
 }
 
 export function rebuildClientBundle() {
   const arts = listArticles();
   fs.writeFileSync(CLIENT_BUNDLE, JSON.stringify(arts, null, 2));
+}
+
+export async function refreshSlugList(): Promise<string[]> {
+  return await listSlugsRemote();
 }

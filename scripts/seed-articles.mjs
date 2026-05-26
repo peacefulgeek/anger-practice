@@ -11,7 +11,7 @@ const { ensureDirs, saveArticle, readQueue, writeQueue, listArticles } = await i
 
 ensureDirs();
 
-let queue = readQueue();
+let queue = await readQueue();
 if (!queue.length) {
   console.error("Queue is empty. Run scripts/build-queue.mjs first.");
   process.exit(1);
@@ -31,7 +31,7 @@ while (generated < COUNT && queue.length && attempts < COUNT * 3) {
       console.log("  (duplicate slug, skipping)");
       continue;
     }
-    saveArticle({ ...a, publishedAt: new Date().toISOString() });
+    await saveArticle({ ...a, publishedAt: new Date().toISOString(), published: true });
     existing.add(a.slug);
     generated++;
     console.log(`  OK ${a.slug} — ${a.wordCount}w, voice=${a.voiceScore}`);
@@ -39,7 +39,7 @@ while (generated < COUNT && queue.length && attempts < COUNT * 3) {
     console.error(`  FAIL: ${e.message}`);
     queue.push(topic);
   }
-  writeQueue(queue);
+  await writeQueue(queue);
 }
 
 console.log(`\nDone. Generated ${generated} articles. Queue size: ${queue.length}`);

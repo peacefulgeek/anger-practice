@@ -200,3 +200,7 @@
 {"ts":"2026-05-01T19:43:40.716Z","event":"ok","topic":"Ghee, Coconut, and the Cooling of Inner Fire","slug":"ghee-coconut-and-the-cooling-of-inner-fire","words":2665,"voice":80,"ms":223138}
 {"ts":"2026-05-01T19:43:55.779Z","event":"ok","topic":"Pitta-Cooling Foods and Why They Work","slug":"pitta-cooling-foods-and-why-they-work","words":2119,"voice":90,"ms":359697}
 {"ts":"2026-05-01T19:44:13.576Z","event":"ok","topic":"Coriander, Fennel, Cumin: The CCF Rage Cooler","slug":"coriander-fennel-cumin-the-ccf-rage-cooler","words":2182,"voice":90,"ms":152205}
+{"ts":"2026-05-26T22:43:55.212Z","event":"fail","topic":"Nervines Beyond Chamomile: Skullcap, Motherwort, Linden","error":"Article generation failed for: Nervines Beyond Chamomile: Skullcap, Motherwort, Linden","ms":40326}
+{"ts":"2026-05-26T22:44:05.837Z","event":"summary","done":0,"failed":1,"remaining":308}
+{"ts":"2026-05-26T22:47:00.653Z","event":"fail","topic":"Motherwort: The Herb for Mothers Who Have Had It","error":"Article too short for: Motherwort: The Herb for Mothers Who Have Had It (1533w)","ms":156631}
+{"ts":"2026-05-26T22:47:10.020Z","event":"summary","done":0,"failed":1,"remaining":307}

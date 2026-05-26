@@ -19,7 +19,7 @@ function log(rec) {
   fs.appendFileSync(LOG_PATH, JSON.stringify({ ts: new Date().toISOString(), ...rec }) + "\n");
 }
 
-let queue = readQueue();
+let queue = await readQueue();
 const existingSlugs = new Set(listArticles().map((a) => a.slug));
 console.log(`[bulk-seed] start: queue=${queue.length} existing=${existingSlugs.size} target=${COUNT} concurrency=${CONCURRENCY}`);
 
@@ -60,17 +60,15 @@ async function worker(id) {
         inFlight--;
         continue;
       }
-      // Stagger publish dates: first 30 published now, rest scheduled future
+      // Save every generated article as GATED. The cap-published step at the
+      // end will promote the OLDEST 100 (≥1,800 words) to published.
       const totalSoFar = existingSlugs.size + done;
-      const isPub = totalSoFar < 30;
-      const scheduledFor = isPub
-        ? new Date().toISOString()
-        : new Date(Date.now() + (totalSoFar - 30) * 6 * 3600 * 1000).toISOString();
-      saveArticle({
+      const scheduledFor = new Date(Date.now() + totalSoFar * 6 * 3600 * 1000).toISOString();
+      await saveArticle({
         ...a,
-        publishedAt: isPub ? new Date().toISOString() : null,
+        publishedAt: null,
         scheduledFor,
-        published: isPub,
+        published: false,
       });
       existingSlugs.add(a.slug);
       done++;
@@ -86,7 +84,7 @@ async function worker(id) {
       inFlight--;
       // Persist queue progress periodically
       if ((done + failed) % 5 === 0) {
-        writeQueue(queue.slice(queueIdx));
+        await writeQueue(queue.slice(queueIdx));
       }
       // Inter-call cooldown: 8s per worker between attempts so we don't slam the API
       await new Promise((r) => setTimeout(r, 8000));
@@ -97,6 +95,6 @@ async function worker(id) {
 const workers = Array.from({ length: CONCURRENCY }, (_, i) => worker(i + 1));
 await Promise.all(workers);
 
-writeQueue(queue.slice(queueIdx));
+await writeQueue(queue.slice(queueIdx));
 console.log(`\n[bulk-seed] done: ok=${done} failed=${failed} remaining=${queue.length - queueIdx}`);
 log({ event: "summary", done, failed, remaining: queue.length - queueIdx });

@@ -35,12 +35,12 @@ async function publishNext() {
     const target = gated[0];
     target.published = true;
     target.publishedAt = new Date().toISOString();
-    saveArticle(target);
+    await saveArticle(target);
     console.log(`[cron:publish] promoted gated draft: ${target.slug}`);
     return; // one action per tick
   }
 
-  const topic = popQueue();
+  const topic = await popQueue();
   if (!topic) {
     console.log("[cron:publish] queue empty");
     return;
@@ -48,20 +48,18 @@ async function publishNext() {
   console.log(`[cron:publish] generating: ${topic}`);
   try {
     const a = await generateWithRetry(topic, 2);
-    saveArticle({
+    await saveArticle({
       ...a,
       publishedAt: new Date().toISOString(),
     });
     console.log(`[cron:publish] OK ${a.slug} (${a.wordCount}w, score=${a.voiceScore})`);
   } catch (e) {
     console.error(`[cron:publish] FAILED ${topic}:`, (e as Error).message);
-    // put topic back
-    const q = readQueue();
+    // Put topic back at end of queue
+    const q = await readQueue();
     q.push(topic);
-    fs.writeFileSync(
-      path.resolve(process.cwd(), "data", "topics-queue.json"),
-      JSON.stringify(q, null, 2),
-    );
+    const { writeQueue } = await import("../lib/store.js");
+    await writeQueue(q);
   }
 }
 
