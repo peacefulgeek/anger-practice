@@ -57,5 +57,6 @@
   ],
   "createdAt": "2026-04-29T22:33:30.512Z",
   "publishedAt": "2026-04-29T22:33:30.514Z",
-  "published": true
+  "published": true,
+  "scheduledFor": "2026-04-29T22:33:30.514Z"
 }

@@ -3,9 +3,15 @@
   "version": "1.0.0",
   "type": "module",
   "license": "MIT",
+  "engines": {
+    "node": ">=22.0.0 <23.0.0",
+    "pnpm": ">=10.0.0"
+  },
   "scripts": {
     "dev": "vite --host",
+    "prebuild": "node scripts/compile-articles.mjs",
     "build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
+    "cap:published": "node scripts/cap-published.mjs",
     "start": "NODE_ENV=production node dist/index.js",
     "preview": "vite preview --host",
     "check": "tsc --noEmit",

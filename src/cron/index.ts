@@ -9,14 +9,37 @@ import {
   popQueue,
   readQueue,
   listArticles,
+  listAllArticles,
   rebuildClientBundle,
+  ARTICLES_DIR,
 } from "../lib/store.js";
 import { HERBS } from "../lib/herbs.js";
 import { BOOKS } from "../lib/books.js";
 
-// ---- Cron 1: publish next queued article every 6 hours ----
+// ---- Cron 1: publish next queued article (or promote next gated) every 6 hours ----
 async function publishNext() {
   if (!AUTO_GEN_ENABLED) return;
+
+  // First: promote any gated draft whose scheduledFor has matured.
+  // We promote ONE per tick so the rollout stays steady and traffic-shaped.
+  const now = Date.now();
+  const gated = listAllArticles().filter(
+    (a) =>
+      a.published !== true &&
+      a.scheduledFor &&
+      new Date(a.scheduledFor).getTime() <= now,
+  );
+  if (gated.length) {
+    // Oldest-scheduled first
+    gated.sort((a, b) => new Date(a.scheduledFor!).getTime() - new Date(b.scheduledFor!).getTime());
+    const target = gated[0];
+    target.published = true;
+    target.publishedAt = new Date().toISOString();
+    saveArticle(target);
+    console.log(`[cron:publish] promoted gated draft: ${target.slug}`);
+    return; // one action per tick
+  }
+
   const topic = popQueue();
   if (!topic) {
     console.log("[cron:publish] queue empty");
