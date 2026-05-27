@@ -36,7 +36,7 @@ export const DEEPSEEK = {
 };
 
 export const AMAZON = {
-  tag: "spankyspinola-20",
+  tag: process.env.AMAZON_TAG || "spankyspinola-20",
 };
 
 export function amazonUrl(asin: string): string {

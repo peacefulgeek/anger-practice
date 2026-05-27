@@ -20,14 +20,16 @@ import { BOOKS } from "../lib/books.js";
 async function publishNext() {
   if (!AUTO_GEN_ENABLED) return;
 
-  // First: promote any gated draft whose scheduledFor has matured.
-  // We promote ONE per tick so the rollout stays steady and traffic-shaped.
+  // First: promote any gated draft whose scheduledFor has matured AND that
+  // already passes the 1,800-word floor. Anything shorter never gets promoted.
   const now = Date.now();
+  const MIN_WORDS = 1800;
   const gated = listAllArticles().filter(
     (a) =>
       a.published !== true &&
       a.scheduledFor &&
-      new Date(a.scheduledFor).getTime() <= now,
+      new Date(a.scheduledFor).getTime() <= now &&
+      (a.wordCount ?? 0) >= MIN_WORDS,
   );
   if (gated.length) {
     // Oldest-scheduled first
@@ -36,7 +38,7 @@ async function publishNext() {
     target.published = true;
     target.publishedAt = new Date().toISOString();
     await saveArticle(target);
-    console.log(`[cron:publish] promoted gated draft: ${target.slug}`);
+    console.log(`[cron:publish] promoted gated draft: ${target.slug} (${target.wordCount}w)`);
     return; // one action per tick
   }
 
