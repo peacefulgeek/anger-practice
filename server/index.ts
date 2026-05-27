@@ -43,9 +43,18 @@ async function startServer() {
   const server = createServer(app);
 
   // API endpoints BEFORE static so they win the catch-all
+  // Always normalize heroImage to canonical /articles-hero/<slug>.webp at
+  // serve time. This makes the API serve unique-per-article heroes regardless
+  // of what's in the cache or what an old generator wrote.
+  const PULL_BASE = "https://anger-practice.b-cdn.net";
+  function withCanonicalHero<T extends { slug?: string; heroImage?: string }>(a: T): T {
+    if (!a || !a.slug) return a;
+    return { ...a, heroImage: `${PULL_BASE}/articles-hero/${a.slug}.webp` };
+  }
   app.get("/api/articles", (_req, res) => {
     try {
-      res.json(listArticles());
+      const arts = listArticles().map(withCanonicalHero);
+      res.json(arts);
     } catch (e) {
       res.status(500).json({ error: (e as Error).message });
     }
