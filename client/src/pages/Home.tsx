@@ -1,8 +1,10 @@
 import { Link } from "wouter";
 import { useArticles } from "@/data/types";
 
-function formatDate(iso: string): string {
+function formatDate(iso: string | null | undefined): string {
+  if (!iso) return "";
   const d = new Date(iso);
+  if (Number.isNaN(d.getTime()) || d.getFullYear() < 2000) return "";
   return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 }
 
@@ -20,7 +22,7 @@ export default function Home() {
         <div className="container pt-10 pb-16 grid lg:grid-cols-12 gap-10 items-end">
           <div className="lg:col-span-7">
             <div className="dateline mb-4">
-              Volume I <span className="ember-bullet" /> A Journal by The Oracle Lover
+              Volume I <span className="ember-bullet" /> Body-First Writing on Anger
             </div>
             <h1 className="masthead text-[var(--ink)] text-[2.5rem] sm:text-[4rem] lg:text-[5.5rem]">
               Anger isn't <span className="italic font-normal text-[var(--ember-deep)]">the enemy.</span>

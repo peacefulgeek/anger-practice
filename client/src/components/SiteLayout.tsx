@@ -3,7 +3,7 @@ import { ReactNode, useState } from "react";
 import { Menu, X } from "lucide-react";
 
 const NAV = [
-  { href: "/", label: "Journal" },
+  { href: "/", label: "Articles" },
   { href: "/assessments", label: "Assessments" },
   { href: "/herbs", label: "Herbs & Supplements" },
   { href: "/fire-toolkit", label: "Fire Toolkit" },
@@ -19,13 +19,9 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
       <header className="border-b border-[color-mix(in_oklch,var(--ink)_14%,var(--paper))] sticky top-0 z-40 bg-[color-mix(in_oklch,var(--paper)_92%,transparent)] backdrop-blur-md">
         <div className="container flex items-center justify-between py-5">
           <Link href="/" className="no-underline">
-            <div className="flex items-baseline gap-2">
-              <span className="masthead text-[1.6rem] sm:text-[2rem] text-[var(--ink)]">
-                The Anger Practice
-              </span>
-              <span className="ember-bullet hidden sm:inline-block" />
-              <span className="dateline hidden md:inline">A Journal by The Oracle Lover</span>
-            </div>
+            <span className="masthead text-[1.6rem] sm:text-[2rem] text-[var(--ink)]">
+              The Anger Practice
+            </span>
           </Link>
           <nav className="hidden md:flex items-center gap-7">
             {NAV.map((n) => (

@@ -11,7 +11,7 @@ export default function About() {
       <section className="border-b border-[color-mix(in_oklch,var(--ink)_14%,var(--paper))]">
         <div className="container py-16 grid lg:grid-cols-12 gap-10 items-center">
           <div className="lg:col-span-7">
-            <div className="dateline mb-4">About the Journal</div>
+            <div className="dateline mb-4">About the Site</div>
             <h1 className="masthead text-[var(--ink)] text-[2.5rem] sm:text-[4rem]">
               We write about anger like it's been waiting for us.
             </h1>
@@ -99,9 +99,9 @@ export default function About() {
           </Link>
           <Link href="/herbs" className="journal-card p-6 no-underline">
             <div className="dateline mb-2">The Cabinet</div>
-            <div className="masthead text-2xl text-[var(--ink)]">203 Herbs &amp; Supplements</div>
+            <div className="masthead text-2xl text-[var(--ink)]">Verified Herb Cabinet</div>
             <p className="text-sm text-[var(--muted-foreground)] mt-2">
-              Two hundred verified herbs, formulas, and supplements across twelve modalities.
+              Verified herbs, formulas, and supplements across twelve modalities — every ASIN tested live.
             </p>
           </Link>
           <Link href="/fire-toolkit" className="journal-card p-6 no-underline">

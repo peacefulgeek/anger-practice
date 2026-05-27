@@ -2,8 +2,11 @@ import { useParams, Link } from "wouter";
 import { useArticles, useArticle } from "@/data/types";
 import { Streamdown } from "streamdown";
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", {
+function formatDate(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime()) || d.getFullYear() < 2000) return "";
+  return d.toLocaleDateString("en-US", {
     year: "numeric",
     month: "long",
     day: "numeric",
@@ -18,12 +21,12 @@ export default function Article() {
   if (!article) {
     return (
       <div className="container py-24 text-center">
-        <h1 className="masthead text-4xl">Not in the journal yet.</h1>
+        <h1 className="masthead text-4xl">Not in the articles yet.</h1>
         <p className="mt-4 text-[var(--muted-foreground)]">
           This piece may still be in the press.
         </p>
         <Link href="/" className="btn-ember mt-8 inline-block no-underline">
-          Return to the journal
+          Return to the articles
         </Link>
       </div>
     );
@@ -40,14 +43,18 @@ export default function Article() {
   );
 
   return (
-    <article className="fade-rise">
+      <article className="fade-rise">
       {/* Headline block */}
       <header className="border-b border-[color-mix(in_oklch,var(--ink)_14%,var(--paper))]">
         <div className="container pt-10 pb-14">
           <div className="dateline mb-6 flex items-center flex-wrap gap-x-3 gap-y-1">
             <Link href="/" className="no-underline">The Anger Practice</Link>
-            <span className="ember-bullet" />
-            <span>{formatDate(article.publishedAt)}</span>
+            {formatDate(article.publishedAt) && (
+              <>
+                <span className="ember-bullet" />
+                <span>{formatDate(article.publishedAt)}</span>
+              </>
+            )}
             <span className="ember-bullet" />
             <span>{article.wordCount.toLocaleString()} words</span>
           </div>
@@ -116,7 +123,7 @@ export default function Article() {
         </aside>
 
         <div className="lg:col-span-9">
-          <div className="prose-anger two-column">
+          <div className="prose-anger">
             <Streamdown>{body}</Streamdown>
           </div>
 
