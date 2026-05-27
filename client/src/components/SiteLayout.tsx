@@ -3,7 +3,8 @@ import { ReactNode, useState } from "react";
 import { Menu, X } from "lucide-react";
 
 const NAV = [
-  { href: "/", label: "Articles" },
+  { href: "/", label: "Home" },
+  { href: "/articles", label: "Articles" },
   { href: "/assessments", label: "Assessments" },
   { href: "/herbs", label: "Herbs & Supplements" },
   { href: "/fire-toolkit", label: "Fire Toolkit" },
