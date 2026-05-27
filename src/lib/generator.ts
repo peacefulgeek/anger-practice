@@ -72,8 +72,17 @@ function slugify(s: string): string {
 
 type AnyProduct = { asin: string; title: string; brand: string; category: string };
 
+// Allowlist of every ASIN the generator is permitted to mention. Built once
+// per process from the verified HERBS + BOOKS arrays. Any Amazon link the LLM
+// emits whose ASIN isn't in this set will be stripped out below.
+const VERIFIED_POOL: AnyProduct[] = [
+  ...(HERBS as unknown as AnyProduct[]),
+  ...(BOOKS as unknown as AnyProduct[]),
+];
+const VERIFIED_ASIN_SET = new Set(VERIFIED_POOL.map((p) => p.asin));
+
 function pickInlineProducts(count = 3) {
-  const pool: AnyProduct[] = [...(HERBS as unknown as AnyProduct[]), ...(BOOKS as unknown as AnyProduct[])];
+  const pool: AnyProduct[] = [...VERIFIED_POOL];
   const out: AnyProduct[] = [];
   while (out.length < count && pool.length) {
     out.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
@@ -82,13 +91,57 @@ function pickInlineProducts(count = 3) {
 }
 
 function pickBottomProducts(count = 4) {
-  const pool: AnyProduct[] = [...(HERBS as unknown as AnyProduct[]), ...(BOOKS as unknown as AnyProduct[])];
+  const pool: AnyProduct[] = [...VERIFIED_POOL];
   const out: { asin: string; title: string; link: string; category: string }[] = [];
   while (out.length < count && pool.length) {
     const p = pool.splice(Math.floor(Math.random() * pool.length), 1)[0];
     out.push({ asin: p.asin, title: p.title, link: amazonUrl(p.asin), category: p.category });
   }
   return out;
+}
+
+/**
+ * Strict allowlist enforcement. Walk every markdown link in the body that
+ * points at amazon.com/dp/<ASIN>. If the ASIN isn't in the verified pool,
+ * either rewrite it to a verified replacement (preferred) or strip the link
+ * entirely (keeping just the link text, which avoids dead affiliate URLs).
+ *
+ * Returns the cleaned body plus a list of (badAsin -> replacement) for logging.
+ */
+function enforceVerifiedAsinsOnly(
+  body: string,
+  preferredReplacements: AnyProduct[],
+): { body: string; replacements: { from: string; to: string | null }[] } {
+  const linkRe = /\[([^\]]+)\]\(https:\/\/www\.amazon\.com\/dp\/([A-Z0-9]+)(?:\?[^)]*)?\)/g;
+  const used = new Set<string>();
+  const replacements: { from: string; to: string | null }[] = [];
+  let replPool = [...preferredReplacements];
+
+  const cleaned = body.replace(linkRe, (full, displayText, asin) => {
+    if (VERIFIED_ASIN_SET.has(asin)) {
+      used.add(asin);
+      return full;
+    }
+    // Pick a fresh verified replacement that hasn't been used yet.
+    let pick: AnyProduct | undefined;
+    for (let i = 0; i < replPool.length; i++) {
+      if (!used.has(replPool[i].asin)) {
+        pick = replPool[i];
+        replPool.splice(i, 1);
+        break;
+      }
+    }
+    if (!pick) {
+      // Out of fresh replacements - strip the link, keep just the prose.
+      replacements.push({ from: asin, to: null });
+      return displayText;
+    }
+    used.add(pick.asin);
+    replacements.push({ from: asin, to: pick.asin });
+    return `[${pick.title}](${amazonUrl(pick.asin)})`;
+  });
+
+  return { body: cleaned, replacements };
 }
 
 export async function generateArticle(topic: string, heroIndex?: number): Promise<GeneratedArticle> {
@@ -167,6 +220,23 @@ Output: DEK line, then markdown body. Do NOT output the title - we have it. Do N
   let body = raw.replace(/\[\[PRODUCT:([A-Z0-9]+)\|(.+?)\]\]/g, (_: string, asin: string, label: string) => {
     return `[${label}](${amazonUrl(asin)})`;
   });
+
+  // STRICT ALLOWLIST. The LLM has been observed inventing Amazon ASINs
+  // (B00028LZ2G, B007WK0E56, etc) despite explicit instructions not to.
+  // Walk every amazon.com/dp/<ASIN> link in the body and rewrite anything
+  // not in HERBS+BOOKS. Pull replacements from the same verified pool the
+  // generator already chose, so the article still flows naturally.
+  const enforcement = enforceVerifiedAsinsOnly(body, [
+    ...VERIFIED_POOL.filter((p) => !inline.some((i) => i.asin === p.asin)),
+  ]);
+  body = enforcement.body;
+  if (enforcement.replacements.length) {
+    console.log(
+      `[gen] enforced verified-asin allowlist: ${enforcement.replacements
+        .map((r) => `${r.from}→${r.to ?? "STRIPPED"}`)
+        .join(", ")}`,
+    );
+  }
 
   // Append inline product links that weren't used
   for (const p of inline) {
