@@ -119,3 +119,57 @@ container is disposable.
 
 This entire stack is portable: clone the repo, set the four env vars on
 any Node-22 host, and it runs. Railway is just our chosen host.
+
+---
+
+## Railway gotchas (already mitigated in this repo)
+
+These are the traps that bit us on the first deploy. Every one of them is
+fixed in code now. If you're forking or copying this stack, keep these
+mitigations in place.
+
+**Builder is Railpack, not Nixpacks.** `railway.json` declares
+`"builder": "RAILPACK"`. We removed `nixpacks.toml` because Nixpacks
+auto-detects the Vite-built `dist/public/` and inserts Caddy as a reverse
+proxy. Caddy then steals `PORT` and Express never binds. Railpack does not
+do this.
+
+**No `Dockerfile` in the repo.** A Dockerfile + `startCommand` in
+`railway.json` creates an ambiguous build path: Railway honors the
+startCommand but builds the Dockerfile, and the two often disagree on
+runtime working directory or env. We deleted both `Dockerfile` and
+`startCommand` and let Railpack use the `start` script in `package.json`.
+
+**No `healthcheckPath` in `railway.json`.** Cold boot does a Bunny resync
+of ~5–10 seconds before the port binds. Railway's healthcheck timer starts
+the moment the container launches, not the moment the server is ready —
+on a slow regional pull this can race the 300-second default and mark the
+deploy "failed" when it's actually fine. Without a healthcheckPath, Railway
+falls back to port-bind detection, which fires on `[ready] server listening`.
+
+**`pnpm` is pinned exactly.** `package.json` has
+`"packageManager": "pnpm@10.4.1+sha512..."`. Railpack's corepack honors
+this. Do NOT introduce any `pnpm@latest` install line anywhere — corepack
+strict mode fails the build silently when the SHA mismatches.
+
+**`patches/` directory is committed.** `pnpm-lock.yaml` references
+`patches/wouter@3.7.1.patch`. If `.dockerignore` (or any future ignore
+file) excluded it, lockfile integrity check would fail mid-install with
+no readable error. We do not ship a `.dockerignore` so this stays simple.
+
+**Crash handlers are the FIRST lines of `server/index.ts`.** Before any
+`import`, we register `process.on("uncaughtException")` and
+`process.on("unhandledRejection")`. We also wire `server.on("error")`.
+Without these, a port-bind failure or a bad import dies silently and you
+stare at a blank Railway log for ten minutes wondering what happened.
+
+**`PORT` defaults to 8080, not 3000.** Railway always injects `PORT`,
+but if for any reason the env passthrough fails the container still binds
+to 8080 (Railway's expected default) and the deploy proceeds.
+
+**Custom domain DNS is the last 5%.** After the deploy is green and
+`/health` returns 200 from your `xxx.up.railway.app` URL, only THEN bind
+the custom domain in Networking → Custom Domains. If your apex/CNAME
+records have stale targets from a prior host, **delete them and let
+Railway recreate them.** Don't try to surgically patch — the delete-and-add
+takes 60 seconds and avoids 30 minutes of "why does it 404".

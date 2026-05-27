@@ -1,0 +1,6 @@
+# pnpm 10+ moved overrides out of package.json into here.
+# Empty packages list = single-project repo (no sub-workspaces).
+packages: []
+
+overrides:
+  tailwindcss>nanoid: 3.3.7
