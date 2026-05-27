@@ -51,6 +51,45 @@ async function startServer() {
     }
   });
 
+  // sitemap.xml — only published articles + static routes (no gated drafts)
+  app.get("/sitemap.xml", (_req, res) => {
+    try {
+      const base = "https://theangerpractice.com";
+      const staticPaths = [
+        "/",
+        "/articles",
+        "/assessments",
+        "/herbs",
+        "/fire-toolkit",
+        "/about",
+      ];
+      const arts = listArticles();
+      const urls: string[] = [];
+      for (const p of staticPaths) {
+        urls.push(`<url><loc>${base}${p}</loc><changefreq>weekly</changefreq></url>`);
+      }
+      for (const a of arts) {
+        const lastmod = a.publishedAt ? String(a.publishedAt).slice(0, 10) : "";
+        urls.push(
+          `<url><loc>${base}/article/${a.slug}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ""}<changefreq>monthly</changefreq></url>`,
+        );
+      }
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>\n`;
+      res.set("Content-Type", "application/xml");
+      res.send(xml);
+    } catch (e) {
+      res.status(500).type("text/plain").send((e as Error).message);
+    }
+  });
+
+  app.get("/robots.txt", (_req, res) => {
+    res
+      .type("text/plain")
+      .send(
+        `User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: https://theangerpractice.com/sitemap.xml\n`,
+      );
+  });
+
   app.get("/health", (_req, res) => {
     try {
       const arts = listArticles();
