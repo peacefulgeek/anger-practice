@@ -90,6 +90,33 @@ async function startServer() {
       );
   });
 
+  // Admin: force this instance to re-pull from Bunny. Railway runs multiple
+  // instances and each has its own in-memory cache; calling this on each
+  // instance ensures they all serve fresh data after a Bunny upload.
+  // Auth: shared secret in header.
+  const ADMIN_SECRET = process.env.ADMIN_SECRET || process.env.JWT_SECRET || "";
+  app.post("/api/admin/refresh", async (req, res) => {
+    if (!ADMIN_SECRET || req.header("x-admin-secret") !== ADMIN_SECRET) {
+      return res.status(401).json({ ok: false, error: "unauthorized" });
+    }
+    try {
+      const t = Date.now();
+      const r = await bootstrapStore();
+      res.json({ ok: true, refreshed: r, ms: Date.now() - t, instance: process.env.RAILWAY_REPLICA_ID || process.env.HOSTNAME || "unknown" });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: (e as Error).message });
+    }
+  });
+
+  // Periodic re-sync as a belt-and-suspenders. Every 30 min, every replica
+  // independently re-pulls from Bunny so writes propagate across the fleet
+  // without manual intervention.
+  setInterval(() => {
+    bootstrapStore()
+      .then((r) => console.log(`[periodic-resync] driver=${r.driver} pulled=${r.pulled} total=${r.total}`))
+      .catch((e) => console.error(`[periodic-resync] failed:`, e));
+  }, 30 * 60 * 1000);
+
   app.get("/health", (_req, res) => {
     try {
       const arts = listArticles();
