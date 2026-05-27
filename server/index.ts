@@ -140,3 +140,4 @@ startServer().catch((e) => {
   console.error("[fatal] startServer rejected:", e && (e.stack || e));
   process.exit(1);
 });
+// rebuild trigger 2026-05-27T18:41:55Z
