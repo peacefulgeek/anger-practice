@@ -16,7 +16,7 @@ import {
 import { HERBS } from "../lib/herbs.js";
 import { BOOKS } from "../lib/books.js";
 
-// ---- Cron 1: publish next queued article (or promote next gated) every 6 hours ----
+// ---- Cron 1: publish next queued article (or promote next gated) — 6/week ----
 async function publishNext() {
   if (!AUTO_GEN_ENABLED) return;
 
@@ -216,8 +216,10 @@ export function startCrons() {
   }
   console.log("[cron] starting 5 schedulers");
 
-  // Every 6 hours: publish next article
-  cron.schedule("0 */6 * * *", publishNext, { timezone: "America/Los_Angeles" });
+  // 6 articles per week: Monday–Saturday at 09:00 PT (Sundays off).
+  // Earlier this was every 6 hours (4/day) — too aggressive for a sustainable
+  // editorial cadence once the launch backlog was published.
+  cron.schedule("0 9 * * 1-6", publishNext, { timezone: "America/Los_Angeles" });
 
   // Daily at 07:00: rotate product spotlight
   cron.schedule("0 7 * * *", rotateProductSpotlight, { timezone: "America/Los_Angeles" });
