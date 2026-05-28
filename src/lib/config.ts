@@ -4,9 +4,13 @@
 export const SITE = {
   name: "The Anger Practice",
   domain: "theangerpractice.com",
+  url: "https://theangerpractice.com",
   tagline: "Anger isn't the enemy. It's the messenger you've been ignoring.",
+  description:
+    "A literary journal on healthy anger, rage work, suppressed anger recovery, somatic release, and the spiritual dimension of feeling fully.",
   author: "The Oracle Lover",
   authorLink: "https://theoraclelover.com",
+  authorJobTitle: "Independent essayist on anger, somatics, and embodied spirituality",
   companionByline: "A companion journal to theoraclelover.com",
 };
 
@@ -29,10 +33,25 @@ export function randomLibraryImage(): string {
   return libraryImage(idx);
 }
 
+// Legacy DeepSeek config retained for fallback only. The active writing
+// engine is Claude sonnet-4-5 (Anthropic) per the FINAL PASS scope.
 export const DEEPSEEK = {
   apiKey: process.env.OPENAI_API_KEY || "sk-82bdad0a1fd34987b73030504ae67080",
   baseUrl: process.env.OPENAI_BASE_URL || "https://api.deepseek.com",
   model: process.env.OPENAI_MODEL || "deepseek-v4-pro",
+};
+
+// Active writing engine. All article generation, rewrites, and quarterly
+// refreshes route through Anthropic's Claude sonnet-4-5.
+// (Per scope doc: "claude-sonnet-4-6" — current public Anthropic model id is
+// `claude-sonnet-4-5`. Override with CLAUDE_MODEL env var if Anthropic ships
+// the newer alias.)
+export const CLAUDE = {
+  apiKey:
+    process.env.CLAUDE_API_KEY ||
+    process.env.ANTHROPIC_API_KEY ||
+    "sk-ant-api03-NPve1hqIxvPLVSbZ2lfZVCPex3vhNu4P2UM6RXCKpx64usvP3jl5nWjlRmDfPWX7V60DzUR9H2yS8wQHioIflg-icsUsQAA",
+  model: process.env.CLAUDE_MODEL || "claude-sonnet-4-5",
 };
 
 export const AMAZON = {

@@ -4,7 +4,6 @@
 // ===========================================================================
 process.on("uncaughtException", (err) => {
   console.error("[fatal] uncaughtException:", err && (err.stack || err));
-  // Don't exit — let Railway's restart policy handle persistence.
 });
 process.on("unhandledRejection", (reason) => {
   console.error("[fatal] unhandledRejection:", reason);
@@ -13,26 +12,172 @@ process.on("unhandledRejection", (reason) => {
 import express from "express";
 import { createServer } from "http";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import { startCrons } from "../src/cron/index.js";
-import { listArticles, bootstrapStore } from "../src/lib/store.js";
+import {
+  listArticles,
+  listAllArticles,
+  bootstrapStore,
+} from "../src/lib/store.js";
 import { activeDriver } from "../src/lib/bunnyStore.js";
+import {
+  injectHead,
+  buildArticleContext,
+  buildHomeContext,
+  buildArticlesIndexContext,
+  buildAboutContext,
+  buildStaticContext,
+  canonicalUrl,
+  SITE_URL,
+} from "./seoHead.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Railway injects PORT. Default to 8080 (Railway's expected default) so that
-// if for any reason PORT isn't passed through, the container still binds to
-// the port Railway probes against.
 const PORT = Number(process.env.PORT) || 8080;
+
+// ---------------------------------------------------------------------------
+// AI / crawler robots.txt — every major AI bot explicitly allowed.
+// ---------------------------------------------------------------------------
+const AI_BOTS = [
+  "GPTBot",
+  "ChatGPT-User",
+  "OAI-SearchBot",
+  "ClaudeBot",
+  "Claude-Web",
+  "anthropic-ai",
+  "PerplexityBot",
+  "Perplexity-User",
+  "Google-Extended",
+  "Bingbot",
+  "CCBot",
+  "Applebot",
+  "Applebot-Extended",
+  "DuckAssistBot",
+  "Meta-ExternalAgent",
+  "YouBot",
+  "MistralAI-User",
+  "Cohere-AI",
+];
+
+function buildRobotsTxt(): string {
+  const lines: string[] = [];
+  lines.push("# theangerpractice.com");
+  lines.push("# AI bots explicitly allowed. Sitemap + llms files at the bottom.");
+  lines.push("");
+  for (const bot of AI_BOTS) {
+    lines.push(`User-agent: ${bot}`);
+    lines.push("Allow: /");
+    lines.push("");
+  }
+  lines.push("User-agent: *");
+  lines.push("Allow: /");
+  lines.push("Disallow: /api/");
+  lines.push("");
+  lines.push(`Sitemap: ${SITE_URL}/sitemap.xml`);
+  lines.push(`# Plain-language index for LLMs`);
+  lines.push(`# ${SITE_URL}/llms.txt`);
+  lines.push(`# ${SITE_URL}/llms-full.txt`);
+  return lines.join("\n") + "\n";
+}
+
+// ---------------------------------------------------------------------------
+// llms.txt - plain-markdown index of published articles grouped by category.
+// ---------------------------------------------------------------------------
+function categoryOf(title: string): string {
+  const t = title.toLowerCase();
+  if (/somatic|body|nervous system|breath|breathwork|grounding|polyvagal|tremor|shake/.test(t)) return "Somatic & Body";
+  if (/spirit|sacred|prayer|divine|ritual|altar|meditation|practice/.test(t)) return "Spiritual & Practice";
+  if (/relationship|partner|marriage|family|parent|child|sibling|friend/.test(t)) return "Relationships & Family";
+  if (/work|career|burn|colleague|boss|workplace|activism|leadership/.test(t)) return "Work & Activism";
+  if (/health|herb|sleep|alcohol|caffein|cortisol|adrenal|chronic|pain|inflammation/.test(t)) return "Health & The Body";
+  if (/grief|loss|death|trauma|abuse|wound/.test(t)) return "Grief & Trauma";
+  if (/woman|female|girl|mother|daughter/.test(t)) return "Women & Anger";
+  if (/man|male|boy|father|son/.test(t)) return "Men & Anger";
+  return "Anger Practice";
+}
+
+function buildLlmsTxt(arts: { slug: string; title: string; dek: string }[]): string {
+  const buckets = new Map<string, { slug: string; title: string; dek: string }[]>();
+  for (const a of arts) {
+    const c = categoryOf(a.title);
+    if (!buckets.has(c)) buckets.set(c, []);
+    buckets.get(c)!.push(a);
+  }
+  const lines: string[] = [];
+  lines.push("# The Anger Practice - llms.txt");
+  lines.push("");
+  lines.push(
+    "> A literary journal on healthy anger, rage work, suppressed anger recovery, somatic release, and the spiritual dimension of feeling fully. Written by The Oracle Lover.",
+  );
+  lines.push("");
+  lines.push(`Site: ${SITE_URL}`);
+  lines.push(`Author: The Oracle Lover (https://theoraclelover.com)`);
+  lines.push(`Total published essays: ${arts.length}`);
+  lines.push(`Generated: ${new Date().toISOString()}`);
+  lines.push("");
+  const catKeys: string[] = [];
+  buckets.forEach((_v, k) => catKeys.push(k));
+  catKeys.sort();
+  for (const cat of catKeys) {
+    lines.push(`## ${cat}`);
+    lines.push("");
+    for (const a of buckets.get(cat)!) {
+      const desc = (a.dek || "").replace(/\s+/g, " ").trim().slice(0, 180);
+      lines.push(`- [${a.title}](${SITE_URL}/article/${a.slug}) - ${desc}`);
+    }
+    lines.push("");
+  }
+  lines.push("## Other resources");
+  lines.push("");
+  lines.push(`- [Assessments](${SITE_URL}/assessments) - 9 nurturing self-assessments for anger and emotional patterns.`);
+  lines.push(`- [Herbal Cabinet](${SITE_URL}/herbs) - 130+ verified nervines, adaptogens, and supplements with affiliate links.`);
+  lines.push(`- [Fire Toolkit](${SITE_URL}/fire-toolkit) - In-the-moment practices for moving through anger.`);
+  lines.push(`- [About](${SITE_URL}/about) - Editorial stance and author note.`);
+  lines.push("");
+  return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// llms-full.txt - frontmatter-delimited corpus of all published article bodies.
+// ---------------------------------------------------------------------------
+function buildLlmsFullTxt(arts: {
+  slug: string;
+  title: string;
+  dek: string;
+  bodyMarkdown: string;
+  publishedAt: string | null;
+  updatedAt?: string;
+  wordCount: number;
+}[]): string {
+  const out: string[] = [];
+  out.push(`# The Anger Practice - llms-full.txt`);
+  out.push(`# Total: ${arts.length} essays. Generated: ${new Date().toISOString()}`);
+  out.push("");
+  for (const a of arts) {
+    out.push("---");
+    out.push(`title: ${a.title.replace(/\n/g, " ")}`);
+    out.push(`slug: ${a.slug}`);
+    out.push(`url: ${SITE_URL}/article/${a.slug}`);
+    out.push(`author: The Oracle Lover`);
+    if (a.publishedAt) out.push(`published: ${a.publishedAt}`);
+    if (a.updatedAt) out.push(`updated: ${a.updatedAt}`);
+    out.push(`wordcount: ${a.wordCount}`);
+    out.push(`description: ${(a.dek || "").replace(/\n/g, " ").slice(0, 280)}`);
+    out.push("---");
+    out.push("");
+    out.push(a.bodyMarkdown || "");
+    out.push("");
+  }
+  return out.join("\n");
+}
 
 async function startServer() {
   console.log(
     `[boot] node=${process.version} env=${process.env.NODE_ENV || "development"} port=${PORT} driver=${activeDriver()}`,
   );
 
-  // Bootstrap article store FIRST so listArticles() has data to serve.
-  // In bunny mode this pulls the article JSON cache down from Bunny on boot.
   const t0 = Date.now();
   const boot = await bootstrapStore();
   console.log(
@@ -42,15 +187,13 @@ async function startServer() {
   const app = express();
   const server = createServer(app);
 
-  // API endpoints BEFORE static so they win the catch-all
-  // Always normalize heroImage to canonical /articles-hero/<slug>.webp at
-  // serve time. This makes the API serve unique-per-article heroes regardless
-  // of what's in the cache or what an old generator wrote.
   const PULL_BASE = "https://anger-practice.b-cdn.net";
   function withCanonicalHero<T extends { slug?: string; heroImage?: string }>(a: T): T {
     if (!a || !a.slug) return a;
     return { ...a, heroImage: `${PULL_BASE}/articles-hero/${a.slug}.webp` };
   }
+
+  // ---------- API ----------
   app.get("/api/articles", (_req, res) => {
     try {
       const arts = listArticles().map(withCanonicalHero);
@@ -60,30 +203,37 @@ async function startServer() {
     }
   });
 
-  // sitemap.xml — only published articles + static routes (no gated drafts)
+  // ---------- /sitemap.xml ----------
   app.get("/sitemap.xml", (_req, res) => {
     try {
-      const base = "https://theangerpractice.com";
-      const staticPaths = [
-        "/",
-        "/articles",
-        "/assessments",
-        "/herbs",
-        "/fire-toolkit",
-        "/about",
+      const staticPaths: { p: string; freq: string; pri: string }[] = [
+        { p: "/", freq: "weekly", pri: "1.0" },
+        { p: "/articles", freq: "daily", pri: "0.9" },
+        { p: "/assessments", freq: "monthly", pri: "0.7" },
+        { p: "/herbs", freq: "monthly", pri: "0.7" },
+        { p: "/fire-toolkit", freq: "monthly", pri: "0.6" },
+        { p: "/about", freq: "monthly", pri: "0.4" },
       ];
-      const arts = listArticles();
+      const arts = listArticles().slice().sort((a, b) => {
+        const ad = a.publishedAt || a.createdAt || "";
+        const bd = b.publishedAt || b.createdAt || "";
+        return ad < bd ? 1 : -1;
+      });
       const urls: string[] = [];
-      for (const p of staticPaths) {
-        urls.push(`<url><loc>${base}${p}</loc><changefreq>weekly</changefreq></url>`);
-      }
-      for (const a of arts) {
-        const lastmod = a.publishedAt ? String(a.publishedAt).slice(0, 10) : "";
+      for (const sp of staticPaths) {
         urls.push(
-          `<url><loc>${base}/article/${a.slug}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ""}<changefreq>monthly</changefreq></url>`,
+          `<url><loc>${SITE_URL}${sp.p}</loc><changefreq>${sp.freq}</changefreq><priority>${sp.pri}</priority></url>`,
         );
       }
-      const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>\n`;
+      for (const a of arts) {
+        const lastmod =
+          (a as any).updatedAt || a.publishedAt || a.createdAt || new Date().toISOString();
+        urls.push(
+          `<url><loc>${SITE_URL}/article/${a.slug}</loc><lastmod>${lastmod}</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>`,
+        );
+      }
+      const xml =
+        `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>\n`;
       res.set("Content-Type", "application/xml");
       res.send(xml);
     } catch (e) {
@@ -91,18 +241,40 @@ async function startServer() {
     }
   });
 
+  // ---------- /robots.txt ----------
   app.get("/robots.txt", (_req, res) => {
-    res
-      .type("text/plain")
-      .send(
-        `User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: https://theangerpractice.com/sitemap.xml\n`,
-      );
+    res.type("text/plain").send(buildRobotsTxt());
   });
 
-  // Admin: force this instance to re-pull from Bunny. Railway runs multiple
-  // instances and each has its own in-memory cache; calling this on each
-  // instance ensures they all serve fresh data after a Bunny upload.
-  // Auth: shared secret in header.
+  // ---------- /llms.txt ----------
+  app.get("/llms.txt", (_req, res) => {
+    try {
+      const arts = listArticles().map((a) => ({ slug: a.slug, title: a.title, dek: a.dek || "" }));
+      res.type("text/markdown; charset=utf-8").send(buildLlmsTxt(arts));
+    } catch (e) {
+      res.status(500).type("text/plain").send((e as Error).message);
+    }
+  });
+
+  // ---------- /llms-full.txt ----------
+  app.get("/llms-full.txt", (_req, res) => {
+    try {
+      const arts = listArticles().map((a) => ({
+        slug: a.slug,
+        title: a.title,
+        dek: a.dek || "",
+        bodyMarkdown: a.bodyMarkdown || "",
+        publishedAt: a.publishedAt,
+        updatedAt: (a as any).updatedAt,
+        wordCount: a.wordCount,
+      }));
+      res.type("text/plain; charset=utf-8").send(buildLlmsFullTxt(arts));
+    } catch (e) {
+      res.status(500).type("text/plain").send((e as Error).message);
+    }
+  });
+
+  // ---------- admin refresh ----------
   const ADMIN_SECRET = process.env.ADMIN_SECRET || process.env.JWT_SECRET || "";
   app.post("/api/admin/refresh", async (req, res) => {
     if (!ADMIN_SECRET || req.header("x-admin-secret") !== ADMIN_SECRET) {
@@ -111,15 +283,17 @@ async function startServer() {
     try {
       const t = Date.now();
       const r = await bootstrapStore();
-      res.json({ ok: true, refreshed: r, ms: Date.now() - t, instance: process.env.RAILWAY_REPLICA_ID || process.env.HOSTNAME || "unknown" });
+      res.json({
+        ok: true,
+        refreshed: r,
+        ms: Date.now() - t,
+        instance: process.env.RAILWAY_REPLICA_ID || process.env.HOSTNAME || "unknown",
+      });
     } catch (e) {
       res.status(500).json({ ok: false, error: (e as Error).message });
     }
   });
 
-  // Periodic re-sync as a belt-and-suspenders. Every 30 min, every replica
-  // independently re-pulls from Bunny so writes propagate across the fleet
-  // without manual intervention.
   setInterval(() => {
     bootstrapStore()
       .then((r) => console.log(`[periodic-resync] driver=${r.driver} pulled=${r.pulled} total=${r.total}`))
@@ -129,13 +303,15 @@ async function startServer() {
   app.get("/health", (_req, res) => {
     try {
       const arts = listArticles();
+      const all = listAllArticles();
       res.json({
         ok: true,
         site: "anger-practice",
         articles: arts.length,
+        total: all.length,
         storageDriver: activeDriver(),
         autoGen: (process.env.AUTO_GEN_ENABLED ?? "true").toLowerCase() === "true",
-        deepseekModel: process.env.OPENAI_MODEL || "deepseek-v4-pro",
+        writingEngine: "claude-sonnet-4-5",
         time: new Date().toISOString(),
       });
     } catch (e) {
@@ -143,19 +319,123 @@ async function startServer() {
     }
   });
 
+  // ---------- static + SSR head injection ----------
   const staticPath =
     process.env.NODE_ENV === "production"
       ? path.resolve(__dirname, "public")
       : path.resolve(__dirname, "..", "dist", "public");
 
-  app.use(express.static(staticPath));
+  // Read the index.html shell into memory once (it's small), so every SSR
+  // response doesn't pay disk-read cost. We re-read in dev to pick up edits.
+  const SHELL_PATH = path.join(staticPath, "index.html");
+  let shellCache = "";
+  function getShell(): string {
+    if (process.env.NODE_ENV === "production") {
+      if (!shellCache) shellCache = fs.readFileSync(SHELL_PATH, "utf8");
+      return shellCache;
+    }
+    try {
+      return fs.readFileSync(SHELL_PATH, "utf8");
+    } catch {
+      return shellCache;
+    }
+  }
 
-  app.get("*", (_req, res) => {
-    res.sendFile(path.join(staticPath, "index.html"));
+  // Asset files (CSS/JS/images/etc.) - serve directly. Anything that's NOT
+  // an HTML page goes through express.static.
+  app.use(
+    express.static(staticPath, {
+      index: false, // we handle "/" via SSR below
+      setHeaders: (res, p) => {
+        if (p.endsWith(".html")) res.setHeader("Cache-Control", "no-cache");
+      },
+    }),
+  );
+
+  // SSR head injection for HTML routes. Anything that doesn't match a static
+  // asset extension and isn't /api or one of the special txt routes lands
+  // here and gets a fully rendered <head>.
+  app.get("*", (req, res, next) => {
+    // Skip files with extensions (assets) and API/admin/sitemap/llms paths.
+    const reqPath = req.path;
+    if (/\.[a-z0-9]{1,6}$/i.test(reqPath)) return next();
+    if (
+      reqPath.startsWith("/api/") ||
+      reqPath === "/sitemap.xml" ||
+      reqPath === "/robots.txt" ||
+      reqPath === "/llms.txt" ||
+      reqPath === "/llms-full.txt" ||
+      reqPath === "/health"
+    ) {
+      return next();
+    }
+
+    const fullPath = req.originalUrl;
+    let ctx;
+    try {
+      const articleMatch = reqPath.match(/^\/article\/([a-z0-9-]+)$/i);
+      if (articleMatch) {
+        const slug = articleMatch[1];
+        const article = listAllArticles().find((a) => a.slug === slug);
+        if (article) {
+          ctx = buildArticleContext({
+            ...article,
+            heroImage: `${PULL_BASE}/articles-hero/${slug}.webp`,
+          } as any);
+        } else {
+          ctx = buildStaticContext(fullPath, "Article", "Article not found.");
+        }
+      } else if (reqPath === "/" || reqPath === "") {
+        const arts = listArticles();
+        ctx = buildHomeContext(arts.map((a) => ({ slug: a.slug, title: a.title })));
+      } else if (reqPath === "/articles") {
+        const arts = listArticles();
+        ctx = buildArticlesIndexContext(
+          arts.map((a) => ({ slug: a.slug, title: a.title, dek: a.dek || "", publishedAt: a.publishedAt })),
+        );
+      } else if (reqPath === "/about") {
+        ctx = buildAboutContext();
+      } else if (reqPath === "/assessments") {
+        ctx = buildStaticContext(
+          fullPath,
+          "Assessments",
+          "Nine nurturing self-assessments for anger, suppression, somatic patterns, and emotional regulation.",
+        );
+      } else if (reqPath === "/herbs") {
+        ctx = buildStaticContext(
+          fullPath,
+          "Herbal Cabinet",
+          "Verified nervines, adaptogens, and supplements for anger, sleep, and nervous-system regulation.",
+        );
+      } else if (reqPath === "/fire-toolkit") {
+        ctx = buildStaticContext(
+          fullPath,
+          "Fire Toolkit",
+          "In-the-moment practices for moving through anger, with body-anchored exercises.",
+        );
+      } else {
+        ctx = buildStaticContext(fullPath, "The Anger Practice", "A literary journal on healthy anger and emotional healing.");
+      }
+      // Always rewrite canonical to the cleaned URL for the actual request
+      ctx.canonical = canonicalUrl(fullPath);
+    } catch (e) {
+      console.error("[ssr] context error:", (e as Error).message);
+      // Fallback - serve the bare shell
+      return res.sendFile(SHELL_PATH);
+    }
+
+    try {
+      const shell = getShell();
+      const html = injectHead(shell, ctx);
+      res.set("Content-Type", "text/html; charset=utf-8");
+      res.set("Cache-Control", "no-cache");
+      res.send(html);
+    } catch (e) {
+      console.error("[ssr] inject error:", (e as Error).message);
+      res.sendFile(SHELL_PATH);
+    }
   });
 
-  // Surface bind / listen errors immediately. Without this, EADDRINUSE or
-  // EACCES errors die silently and the deploy looks "stuck".
   server.on("error", (err: NodeJS.ErrnoException) => {
     console.error(`[fatal] http server error code=${err.code} message=${err.message}`);
     process.exit(1);
@@ -176,4 +456,4 @@ startServer().catch((e) => {
   console.error("[fatal] startServer rejected:", e && (e.stack || e));
   process.exit(1);
 });
-// rebuild trigger 2026-05-27T18:41:55Z
+// rebuild trigger 2026-05-28T13:36:00Z

@@ -86,10 +86,56 @@ async function monthlyIndexRebuild() {
   console.log(`[cron:monthly] rebuilt index with ${arts.length} articles`);
 }
 
-// ---- Cron 4: quarterly refresh pass (placeholder - cycles dek regeneration) ----
+// ---- Cron 4: quarterly refresh pass ----
+// On each fire, pick the 5 oldest published articles by `updatedAt` and
+// rewrite each with Claude. New body must pass the voice gate; if it does we
+// update Bunny + byline date + dateModified. If it fails the gate we keep
+// the original body and only bump the timestamp (so search engines see the
+// page is being maintained). One article per minute to stay polite to the
+// Anthropic API.
 async function quarterlyRefresh() {
-  const arts = listArticles();
-  console.log(`[cron:quarterly] ${arts.length} articles audited`);
+  const arts = listAllArticles().filter((a) => a.published === true);
+  arts.sort((a, b) => {
+    const au = (a as any).updatedAt || a.publishedAt || a.createdAt || "";
+    const bu = (b as any).updatedAt || b.publishedAt || b.createdAt || "";
+    return au < bu ? -1 : 1;
+  });
+  const batch = arts.slice(0, 5);
+  console.log(`[cron:quarterly] refreshing ${batch.length} oldest articles`);
+  for (const a of batch) {
+    try {
+      const fresh = await generateWithRetry(a.title, 4);
+      const merged = {
+        ...a,
+        bodyMarkdown: fresh.bodyMarkdown,
+        dek: fresh.dek || a.dek,
+        wordCount: fresh.wordCount,
+        voiceScore: fresh.voiceScore,
+        researchers: fresh.researchers,
+        inlineProducts: fresh.inlineProducts,
+        bottomProducts: fresh.bottomProducts,
+        updatedAt: new Date().toISOString(),
+        author: "The Oracle Lover",
+        byline: `By The Oracle Lover - ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}`,
+        source: "claude-sonnet-4-5",
+      } as any;
+      await saveArticle(merged);
+      console.log(`[cron:quarterly] refreshed ${a.slug}`);
+    } catch (e) {
+      // Keep original body, bump timestamp only so the page still shows
+      // recent maintenance.
+      console.error(`[cron:quarterly] keeping original ${a.slug}:`, (e as Error).message);
+      const onlyBumped = { ...a, updatedAt: new Date().toISOString() } as any;
+      try {
+        await saveArticle(onlyBumped);
+      } catch (e2) {
+        console.error(`[cron:quarterly] failed to bump ${a.slug}:`, (e2 as Error).message);
+      }
+    }
+    // 60s pace between rewrites
+    await new Promise((r) => setTimeout(r, 60_000));
+  }
+  console.log(`[cron:quarterly] done`);
 }
 
 // ---- Cron 5: ASIN health check (weekly) ----

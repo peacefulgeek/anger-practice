@@ -1,15 +1,28 @@
-import OpenAI from "openai";
-import { DEEPSEEK, SITE, libraryImage, amazonUrl } from "./config.js";
+import Anthropic from "@anthropic-ai/sdk";
+import { CLAUDE, SITE, amazonUrl } from "./config.js";
 import { runVoiceGate } from "./voiceGate.js";
 import { HERBS } from "./herbs.js";
 import { BOOKS } from "./books.js";
 import { bucketImageForTopic, bucketLabelForTopic, matchBucket } from "./buckets.js";
 
-const client = new OpenAI({
-  apiKey: DEEPSEEK.apiKey,
-  baseURL: DEEPSEEK.baseUrl,
-  timeout: 600_000, // 10 min per call - v4-pro reasoning + 2500-word article
-  maxRetries: 0, // we handle retries ourselves
+/**
+ * Article generation pipeline backed by Anthropic Claude.
+ *
+ * Per FINAL PASS scope: ALL generation, rewrites, and quarterly refreshes
+ * route through Claude sonnet-4-5 (Anthropic) using CLAUDE_API_KEY.
+ *
+ * Output requirements (enforced by `runVoiceGate`):
+ *  - 1,800 - 3,200 words
+ *  - No em-dashes anywhere
+ *  - No banned words / phrases (full PDF list)
+ *  - 6 E-E-A-T signals on every article
+ *  - Oracle Lover voice (warm, encouraging, divinely inspired, real heart)
+ */
+
+const client = new Anthropic({
+  apiKey: CLAUDE.apiKey,
+  timeout: 600_000,
+  maxRetries: 0,
 });
 
 const NICHE_RESEARCHERS = [
@@ -25,15 +38,51 @@ const NICHE_RESEARCHERS = [
   "Pat Ogden",
 ];
 
-const OPENER_STYLES = [
-  "gut-punch first sentence — a single short declarative that names the lie the reader has been told about anger",
-  "direct question to the reader that they have been avoiding",
-  "one-paragraph story of a specific unnamed person in a specific moment",
-  "counterintuitive claim that reframes what the reader thinks about anger",
+// Curated authoritative sources Claude can cite. We pick one at random and the
+// model is told to weave it in. This guarantees the E-E-A-T outbound signal
+// even if the model tries to skip it.
+const AUTHORITATIVE_SOURCES = [
+  {
+    label: "the NIH overview of anger and the autonomic nervous system",
+    url: "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2864403/",
+  },
+  {
+    label: "the APA's research summary on anger management",
+    url: "https://www.apa.org/topics/anger/control",
+  },
+  {
+    label: "the NIMH page on emotional regulation",
+    url: "https://www.nimh.nih.gov/health/topics/caring-for-your-mental-health",
+  },
+  {
+    label: "the CDC's guidance on stress and the body",
+    url: "https://www.cdc.gov/mentalhealth/stress-coping/cope-with-stress/index.html",
+  },
+  {
+    label: "PubMed research on anger expression and cardiovascular load",
+    url: "https://pubmed.ncbi.nlm.nih.gov/19751988/",
+  },
 ];
 
-function pickOpener(): string {
-  return OPENER_STYLES[Math.floor(Math.random() * OPENER_STYLES.length)];
+// Internal site routes the model can link into. These guarantee the E-E-A-T
+// internal-links signal without relying on the model to invent valid slugs.
+const INTERNAL_LINKS = [
+  { label: "the assessments hub", url: "/assessments" },
+  { label: "our herbal cabinet", url: "/herbs" },
+  { label: "the fire toolkit", url: "/fire-toolkit" },
+  { label: "the about page", url: "/about" },
+  { label: "more articles in this journal", url: "/articles" },
+];
+
+const OPENER_STYLES = [
+  "a single short declarative sentence that names the lie the reader has been told about anger",
+  "a direct question to the reader they have been avoiding",
+  "a one-paragraph story of a specific unnamed person in a specific moment of unfelt anger",
+  "a counterintuitive claim that reframes what the reader thinks anger is for",
+];
+
+function pick<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
 }
 
 function pickResearchers(n = 3): string[] {
@@ -58,6 +107,11 @@ export interface GeneratedArticle {
   inlineProducts: { asin: string; title: string; link: string }[];
   bottomProducts: { asin: string; title: string; link: string; category: string }[];
   createdAt: string;
+  // E-E-A-T fields persisted on every article
+  author: string;
+  byline: string;
+  updatedAt: string;
+  source?: string;
 }
 
 function slugify(s: string): string {
@@ -72,9 +126,6 @@ function slugify(s: string): string {
 
 type AnyProduct = { asin: string; title: string; brand: string; category: string };
 
-// Allowlist of every ASIN the generator is permitted to mention. Built once
-// per process from the verified HERBS + BOOKS arrays. Any Amazon link the LLM
-// emits whose ASIN isn't in this set will be stripped out below.
 const VERIFIED_POOL: AnyProduct[] = [
   ...(HERBS as unknown as AnyProduct[]),
   ...(BOOKS as unknown as AnyProduct[]),
@@ -101,12 +152,15 @@ function pickBottomProducts(count = 4) {
 }
 
 /**
- * Strict allowlist enforcement. Walk every markdown link in the body that
- * points at amazon.com/dp/<ASIN>. If the ASIN isn't in the verified pool,
- * either rewrite it to a verified replacement (preferred) or strip the link
- * entirely (keeping just the link text, which avoids dead affiliate URLs).
- *
- * Returns the cleaned body plus a list of (badAsin -> replacement) for logging.
+ * Replace any em-dash with a plain hyphen surrounded by spaces.
+ * Em-dashes are a hard fail in the voice gate.
+ */
+export function scrubEmDashes(s: string): string {
+  return s.replace(/—/g, " - ");
+}
+
+/**
+ * Strict allowlist enforcement for Amazon ASINs.
  */
 function enforceVerifiedAsinsOnly(
   body: string,
@@ -115,14 +169,13 @@ function enforceVerifiedAsinsOnly(
   const linkRe = /\[([^\]]+)\]\(https:\/\/www\.amazon\.com\/dp\/([A-Z0-9]+)(?:\?[^)]*)?\)/g;
   const used = new Set<string>();
   const replacements: { from: string; to: string | null }[] = [];
-  let replPool = [...preferredReplacements];
+  const replPool = [...preferredReplacements];
 
   const cleaned = body.replace(linkRe, (full, displayText, asin) => {
     if (VERIFIED_ASIN_SET.has(asin)) {
       used.add(asin);
       return full;
     }
-    // Pick a fresh verified replacement that hasn't been used yet.
     let pick: AnyProduct | undefined;
     for (let i = 0; i < replPool.length; i++) {
       if (!used.has(replPool[i].asin)) {
@@ -132,7 +185,6 @@ function enforceVerifiedAsinsOnly(
       }
     }
     if (!pick) {
-      // Out of fresh replacements - strip the link, keep just the prose.
       replacements.push({ from: asin, to: null });
       return displayText;
     }
@@ -144,69 +196,146 @@ function enforceVerifiedAsinsOnly(
   return { body: cleaned, replacements };
 }
 
+function buildAuthorByline(topic: string, isoDate: string): string {
+  const human = new Date(isoDate).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  return [
+    "",
+    "---",
+    "",
+    `<section data-author="byline">`,
+    `Written by **The Oracle Lover**, independent essayist on anger, somatics, and embodied spirituality.`,
+    `Last updated <time datetime="${isoDate}">${human}</time>.`,
+    `In our work on ${topic.toLowerCase()}, we keep returning to one quiet truth: the body has been telling you something for a long time, and it deserves a thoughtful listener. The Anger Practice is a companion journal to [theoraclelover.com](https://theoraclelover.com), and every piece here is written with you in mind.`,
+    `</section>`,
+    "",
+  ].join("\n");
+}
+
+function buildTldrPrompt(topic: string): string {
+  return `BEGIN with a TL;DR block in EXACTLY this HTML shape, before any other content. Use 3 declarative sentences (no questions), each under 32 words:
+
+<section data-tldr="ai-overview" aria-label="In short">
+<p><strong>TL;DR.</strong> [Sentence 1.] [Sentence 2.] [Sentence 3.]</p>
+</section>`;
+}
+
 export async function generateArticle(topic: string, heroIndex?: number): Promise<GeneratedArticle> {
-  const opener = pickOpener();
+  const opener = pick(OPENER_STYLES);
   const researchers = pickResearchers(3);
   const inline = pickInlineProducts(3);
   const bottom = pickBottomProducts(4);
   const heroIdx = heroIndex ?? Math.floor(Math.random() * 40) + 1;
-  const bucketSlug = matchBucket(topic);
+  matchBucket(topic);
   const bucketHero = bucketImageForTopic(topic);
-  const bucketLabel = bucketLabelForTopic(topic);
+  bucketLabelForTopic(topic);
+
+  const authority = pick(AUTHORITATIVE_SOURCES);
+  // Pick 3 internal links for the model to weave in
+  const internalPool = [...INTERNAL_LINKS];
+  const chosenInternal: typeof INTERNAL_LINKS = [];
+  while (chosenInternal.length < 3 && internalPool.length) {
+    chosenInternal.push(internalPool.splice(Math.floor(Math.random() * internalPool.length), 1)[0]);
+  }
+
+  const isoNow = new Date().toISOString();
 
   const systemPrompt = `You are The Oracle Lover, an independent literary voice writing for theangerpractice.com (a companion journal to theoraclelover.com).
-Your voice: blunt, sensory, counterintuitive, second-person, unsentimental. You refuse spiritual bypassing and wellness-blog cliché.
-Forbidden: "delve into", "tapestry", "in today's fast-paced world", "journey of self-discovery", "unlock your best self", "holistic approach", "it's important to note", "in conclusion", em-dash spam, the names Paul/Krishna/Kalesh/Shrikrishna.
-Required voice markers: "the body remembers", specific bodily sensation, at least one counterintuitive claim, at least one reference to a niche researcher in this piece.
-Never narrate yourself as an AI. Never explain that you are writing an article.`;
+
+VOICE
+- Lovely, warm, informative, encouraging, divinely inspired. Real voice, real heart.
+- Direct second-person address ("you"). Contractions throughout. Varied sentence length.
+- Concrete specifics over abstractions. Sensory, body-anchored detail.
+- At least 2 conversational openers within the piece (not just at the start).
+
+ABSOLUTE PROHIBITIONS
+- NO em-dashes anywhere. Use a plain hyphen with spaces if a connector is needed.
+- NEVER use these words: delve, tapestry, paradigm, synergy, leverage, unlock, empower, utilize, pivotal, embark, underscore, paramount, seamlessly, robust, beacon, foster, elevate, curate, curated, bespoke, resonate, harness, intricate, plethora, myriad, comprehensive, transformative, groundbreaking, innovative, cutting-edge, revolutionary, state-of-the-art, ever-evolving, profound, holistic, nuanced, multifaceted, stakeholders, ecosystem, landscape, realm, sphere, domain, furthermore, moreover, additionally, consequently, subsequently, thereby, streamline, optimize, facilitate, amplify, catalyze.
+- NEVER use these phrases: "it's important to note", "in conclusion", "in summary", "in the realm of", "dive deep into", "at the end of the day", "in today's fast-paced world", "plays a crucial role", "a testament to", "when it comes to", "cannot be overstated", "needless to say", "first and foremost", "last but not least", "delve into", "a tapestry of", "navigate the complexities", "unlock your best self", "journey of self-discovery", "embark on a journey", "harness the power", "holistic approach".
+- NEVER name: Paul Wagner, Krishna, Kalesh, Shrikrishna, Kaleshwar. Never reference paulwagner.com.
+- Never narrate yourself as an AI. Never explain that you are writing an article.
+
+E-E-A-T REQUIREMENTS (every piece must carry all six)
+1. Open with a TL;DR block in the exact HTML shape provided.
+2. Self-referencing language woven into prose: "in our experience", "when we tested", "across the articles we've published on this site", "in my own practice", "over the years I've seen".
+3. At least 3 internal links with varied anchor text WOVEN INTO PROSE (use the URLs we give you).
+4. At least 1 outbound link to an authoritative source (use the .gov/.edu/NIH source we give you) with rel="nofollow noopener" target="_blank".
+5. A visible last-updated datetime in the byline at the bottom (we will append this).
+6. An author byline at the bottom (we will append this).`;
 
   const userPrompt = `Write an article titled: "${topic}".
-Length: 2300-2700 words target, with hard floor at 1800. WRITE LONG. Do not summarize early. Each H2 section should be substantive (200-350 words). Add concrete examples, dialog snippets, and bodily detail. Anything under 1800 will be discarded. Target reading age: intelligent adult who has been told their anger is the problem.
 
-Opener style (use this, do not label it): ${opener}
+${buildTldrPrompt(topic)}
 
-Weave in specific work from these niche researchers (name them, quote or paraphrase a single specific idea each, do not invent quotes): ${researchers.join(", ")}.
-Do NOT name any of: Paul Wagner, Krishna, Kalesh, Shrikrishna.
+Length: 2,300 - 2,700 words target. Hard floor 1,800 words. Each H2 section should be substantive (200-350 words). Anything under 1,800 will be discarded.
 
-Structure:
-- A 60-word dek (italic standfirst) under the title. Start the very first line of your reply with "DEK: " then the dek, then a blank line, then the body.
-- 6-9 body sections. H2 subheads that are specific (not generic like "Conclusion").
-- 2 sensory, body-anchored passages (you can feel them).
+Opener style for the body that follows the TL;DR (do not label it): ${opener}
+
+Weave in specific work from these researchers (name them, paraphrase one specific idea each, do not invent quotes): ${researchers.join(", ")}.
+
+REQUIRED LINKS to weave naturally into prose with varied anchor text:
+- Internal: [${chosenInternal[0].label}](${chosenInternal[0].url})
+- Internal: [${chosenInternal[1].label}](${chosenInternal[1].url})
+- Internal: [${chosenInternal[2].label}](${chosenInternal[2].url})
+- Outbound (must include rel and target): <a href="${authority.url}" rel="nofollow noopener" target="_blank">${authority.label}</a>
+
+Self-referencing voice: include at least one of these phrases verbatim somewhere in the body: "in our experience", "in my own practice", "over the years I've seen", "across the articles we've published on this site".
+
+Structure after the TL;DR:
+- A 60-word italic dek standfirst on its own line, prefixed with the literal token "DEK: " (we will parse this).
+- 6-9 body sections with specific H2 subheads (no generic "Conclusion").
+- 2 sensory, body-anchored passages.
 - One short practice the reader can do in under 5 minutes.
-- An FAQ-style block with 3 specific questions readers actually ask about this topic.
+- An FAQ-style block with 3 specific questions readers actually ask about this topic, formatted with H3 question headings followed by short paragraph answers.
 - A closing 2-paragraph passage that DOES NOT summarize. It opens outward.
 
-Inline product mentions (soft, in-flow, not pushy, 2-3 total — use the exact placeholder tokens below where they naturally fit; do not invent products):
+Inline product mentions (soft, in-flow, 2-3 total — use the exact placeholder tokens below where they naturally fit; do not invent products):
 - [[PRODUCT:${inline[0].asin}|${inline[0].title}]]
 - [[PRODUCT:${inline[1].asin}|${inline[1].title}]]
 - [[PRODUCT:${inline[2].asin}|${inline[2].title}]]
 
-Backlink: include exactly one soft, in-flow link to https://theoraclelover.com as part of a sentence, phrased like you're pointing the reader toward a companion resource. Use markdown: [text](https://theoraclelover.com).
+One soft companion-site mention as a markdown link in flow: [theoraclelover.com](https://theoraclelover.com).
 
-Output: DEK line, then markdown body. Do NOT output the title - we have it. Do NOT wrap in code fences.`;
+Output order: TL;DR section, then "DEK: ..." line, then a blank line, then the markdown body. Do NOT output the title - we have it. Do NOT wrap in code fences.`;
 
-  // Hard cancel via AbortController so hung connections actually die.
   const ac = new AbortController();
-  const killT = setTimeout(() => ac.abort(), 600_000); // 10 min hard kill - reasoning takes longer with bigger budget
-  let resp: any;
+  const killT = setTimeout(() => ac.abort(), 600_000);
+  let resp: Anthropic.Messages.Message;
   try {
-    resp = await client.chat.completions.create(
+    resp = await client.messages.create(
       {
-        model: DEEPSEEK.model,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
+        model: CLAUDE.model,
+        max_tokens: 16000,
         temperature: 0.85,
-        max_tokens: 32000, // v4-pro is reasoning-mode; burns most tokens on chain-of-thought before output
+        system: systemPrompt,
+        messages: [{ role: "user", content: userPrompt }],
       },
-      { signal: ac.signal }
+      { signal: ac.signal },
     );
   } finally {
     clearTimeout(killT);
   }
 
-  let raw = resp.choices[0]?.message?.content?.trim() || "";
+  let raw = "";
+  for (const block of resp.content) {
+    if (block.type === "text") raw += block.text;
+  }
+  raw = raw.trim();
+
+  // Strip code fences if model added any
+  raw = raw.replace(/^```(?:markdown|md)?\s*\n?/i, "").replace(/\n?```\s*$/i, "");
+
+  // Pull out TL;DR section (must stay at top); pull out DEK line
+  let tldr = "";
+  const tldrMatch = raw.match(/<section[^>]*data-tldr=["']ai-overview["'][\s\S]*?<\/section>/i);
+  if (tldrMatch) {
+    tldr = tldrMatch[0];
+    raw = raw.replace(tldrMatch[0], "").trim();
+  }
+
   let dek = "";
   const dekMatch = raw.match(/^DEK:\s*(.+?)(?:\n\n|\n)/);
   if (dekMatch) {
@@ -221,11 +350,7 @@ Output: DEK line, then markdown body. Do NOT output the title - we have it. Do N
     return `[${label}](${amazonUrl(asin)})`;
   });
 
-  // STRICT ALLOWLIST. The LLM has been observed inventing Amazon ASINs
-  // (B00028LZ2G, B007WK0E56, etc) despite explicit instructions not to.
-  // Walk every amazon.com/dp/<ASIN> link in the body and rewrite anything
-  // not in HERBS+BOOKS. Pull replacements from the same verified pool the
-  // generator already chose, so the article still flows naturally.
+  // Strict ASIN allowlist
   const enforcement = enforceVerifiedAsinsOnly(body, [
     ...VERIFIED_POOL.filter((p) => !inline.some((i) => i.asin === p.asin)),
   ]);
@@ -238,26 +363,38 @@ Output: DEK line, then markdown body. Do NOT output the title - we have it. Do N
     );
   }
 
-  // Append inline product links that weren't used
+  // Append any inline product link not already present
   for (const p of inline) {
     if (!body.includes(p.asin)) {
       body += `\n\n*Tool for this work: [${p.title}](${p.link}).*`;
     }
   }
 
-  // Always append The Oracle Lover byline so it appears inside the article body.
-  if (!body.toLowerCase().includes("theoraclelover.com")) {
-    body +=
-      "\n\n---\n\n*Written by The Oracle Lover. The Anger Practice is a companion journal to [theoraclelover.com](https://theoraclelover.com). We don't do influencer tone or spiritual bypassing. We write honestly about what anger is asking of you.*";
-  }
+  // Append author byline at bottom (E-E-A-T signal 5 + 6)
+  body += buildAuthorByline(topic, isoNow);
 
-  const gate = runVoiceGate(body, topic);
+  // Reassemble: TL;DR (if present) at top, then body
+  let full = "";
+  if (tldr) full += tldr + "\n\n";
+  full += body;
+
+  // Hard scrub em-dashes — model occasionally still emits them despite system prompt
+  full = scrubEmDashes(full);
+
+  const gate = runVoiceGate(full, topic);
+
+  const slug = slugify(topic);
+  const human = new Date(isoNow).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 
   return {
     title: topic,
-    slug: slugify(topic),
+    slug,
     dek,
-    bodyMarkdown: body,
+    bodyMarkdown: full,
     heroImage: bucketHero,
     heroIndex: heroIdx,
     wordCount: gate.wordCount,
@@ -265,7 +402,11 @@ Output: DEK line, then markdown body. Do NOT output the title - we have it. Do N
     researchers,
     inlineProducts: inline,
     bottomProducts: bottom,
-    createdAt: new Date().toISOString(),
+    createdAt: isoNow,
+    author: SITE.author,
+    byline: `By ${SITE.author} - ${human}`,
+    updatedAt: isoNow,
+    source: "claude-sonnet-4-5",
   };
 }
 
@@ -273,7 +414,7 @@ function sleep(ms: number) {
   return new Promise((res) => setTimeout(res, ms));
 }
 
-export async function generateWithRetry(topic: string, maxTries = 8): Promise<GeneratedArticle> {
+export async function generateWithRetry(topic: string, maxTries = 6): Promise<GeneratedArticle> {
   let best: GeneratedArticle | null = null;
   for (let i = 0; i < maxTries; i++) {
     try {
@@ -282,12 +423,12 @@ export async function generateWithRetry(topic: string, maxTries = 8): Promise<Ge
       console.log(`[gen] try ${i + 1} got ${a.wordCount}w v=${a.voiceScore}`);
       const gate = runVoiceGate(a.bodyMarkdown, a.title);
       if (gate.pass && a.wordCount >= 1800) return a;
+      console.log(`[gen] gate fail: ${gate.reasons.slice(0, 4).join(" | ")}`);
       if (!best || a.voiceScore > best.voiceScore) best = a;
     } catch (e) {
       const msg = (e as Error).message || "";
       console.error(`[generator] attempt ${i + 1} failed:`, msg);
-      if (msg.includes("429") || msg.toLowerCase().includes("too many requests") || msg.includes("concurrency")) {
-        // Linear-stepped backoff: 30s, 60s, 90s, 120s, 150s, 180s, 240s, 300s
+      if (msg.includes("429") || msg.toLowerCase().includes("rate")) {
         const delay = Math.min(30000 + i * 30000, 300000);
         console.log(`[generator] rate limited, sleeping ${Math.round(delay / 1000)}s`);
         await sleep(delay);
@@ -297,7 +438,6 @@ export async function generateWithRetry(topic: string, maxTries = 8): Promise<Ge
     }
   }
   if (!best) throw new Error(`Article generation failed for: ${topic}`);
-  // Salvage 1700-1799w articles by tagging them; only fail if truly too short
-  if (best.wordCount < 1700) throw new Error(`Article too short for: ${topic} (${best.wordCount}w)`);
+  if (best.wordCount < 1800) throw new Error(`Article too short for: ${topic} (${best.wordCount}w)`);
   return best;
 }

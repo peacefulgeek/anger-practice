@@ -1,15 +1,25 @@
 /**
- * Paul Voice Gate - content quality + voice enforcement.
- * Any generated article must PASS this before publishing.
+ * Voice + E-E-A-T Quality Gate.
  *
- * Rules (distilled from WRITINGQUALITYGATEADDENDUM + PWAIVoiceV2):
- * 1. No banned names (Paul, Krishna, Kalesh, etc.)
- * 2. No AI-slop phrases ("delve into", "tapestry of", "in today's fast-paced world"...)
- * 3. No generic wellness-blog fluff ("unlock your best self", "journey of self-discovery")
- * 4. No em-dash spam (>4 em-dashes per 1000 words = flag)
- * 5. Word count 1200-2500 (target 1600-2000)
- * 6. At least one Oracle Lover signature phrase
- * 7. Voice markers: second-person address, specific sensory detail, at least one counterintuitive claim
+ * Source of truth: SCOPE-FINAL-PASS.md sections 2 + 3.
+ *
+ * A generated (or rewritten) article must PASS this gate before being
+ * persisted to Bunny. The pipeline regenerates on failure rather than
+ * patching a failed article.
+ *
+ * Rules:
+ *  - No paulwagner.com / Paul Wagner leakage anywhere.
+ *  - No em-dashes anywhere (hard fail). Use plain hyphen with spaces if needed.
+ *  - Full PDF banned-word list (delve, tapestry, paradigm, ...).
+ *  - Full PDF banned-phrase list ("it's important to note", "in conclusion", ...).
+ *  - Word-count window: 1,800 - 3,200.
+ *  - 6 E-E-A-T signals every article must carry:
+ *      1. <section data-tldr="ai-overview"> 3-sentence TL;DR block at the top
+ *      2. Self-referencing language ("in our experience", "when we tested", etc.)
+ *      3. >= 3 internal links (theangerpractice.com or relative /article/...)
+ *      4. >= 1 outbound authoritative link (.gov, .edu, NIH/CDC/WHO/PubMed/Nature/ScienceDirect)
+ *      5. Visible last-updated datetime (datetime= attribute or "Updated" + ISO date)
+ *      6. Author byline block at the bottom with credential + datetime + warm context
  */
 
 export interface VoiceGateResult {
@@ -17,82 +27,230 @@ export interface VoiceGateResult {
   score: number; // 0-100
   reasons: string[];
   wordCount: number;
+  emDashCount: number;
+  bannedWordHits: string[];
+  bannedPhraseHits: string[];
+  eeat: {
+    tldrBlock: boolean;
+    selfReferencing: boolean;
+    internalLinks: number;
+    authoritativeOutbound: boolean;
+    visibleUpdated: boolean;
+    bottomByline: boolean;
+  };
+  // Backwards-compat field for older callers
   oracleLoverPhraseCount: number;
 }
 
 export const BANNED_NAMES = [
   "paul wagner",
-  "paul ",
+  "paulwagner.com",
+  "paulwagner",
   "krishna",
   "kalesh",
   "shrikrishna",
   "kaleshwar",
 ];
 
+export const BANNED_WORDS = [
+  "delve",
+  "delving",
+  "tapestry",
+  "paradigm",
+  "synergy",
+  "leverage",
+  "leveraged",
+  "leveraging",
+  "unlock",
+  "unlocked",
+  "unlocking",
+  "empower",
+  "empowered",
+  "empowering",
+  "empowerment",
+  "utilize",
+  "utilized",
+  "utilizing",
+  "utilization",
+  "pivotal",
+  "embark",
+  "embarking",
+  "underscore",
+  "underscores",
+  "underscored",
+  "paramount",
+  "seamlessly",
+  "seamless",
+  "robust",
+  "beacon",
+  "foster",
+  "fostering",
+  "fostered",
+  "elevate",
+  "elevated",
+  "elevating",
+  "curate",
+  "curated",
+  "curating",
+  "bespoke",
+  "resonate",
+  "resonates",
+  "resonating",
+  "harness",
+  "harnesses",
+  "harnessing",
+  "intricate",
+  "plethora",
+  "myriad",
+  "comprehensive",
+  "transformative",
+  "groundbreaking",
+  "innovative",
+  "cutting-edge",
+  "revolutionary",
+  "state-of-the-art",
+  "ever-evolving",
+  "profound",
+  "holistic",
+  "nuanced",
+  "multifaceted",
+  "stakeholders",
+  "ecosystem",
+  "landscape",
+  "realm",
+  "sphere",
+  "domain",
+  "furthermore",
+  "moreover",
+  "additionally",
+  "consequently",
+  "subsequently",
+  "thereby",
+  "streamline",
+  "streamlined",
+  "streamlining",
+  "optimize",
+  "optimized",
+  "optimizing",
+  "facilitate",
+  "facilitated",
+  "facilitating",
+  "amplify",
+  "amplified",
+  "amplifying",
+  "catalyze",
+  "catalyzed",
+  "catalyzing",
+];
+
 export const BANNED_PHRASES = [
-  // AI slop
+  "it's important to note",
+  "it is important to note",
+  "in conclusion",
+  "in summary",
+  "in the realm of",
+  "dive deep into",
+  "at the end of the day",
+  "in today's fast-paced world",
+  "plays a crucial role",
+  "a testament to",
+  "when it comes to",
+  "cannot be overstated",
+  "needless to say",
+  "first and foremost",
+  "last but not least",
   "delve into",
-  "delving into",
-  "in today's fast-paced",
-  "in the modern world",
-  "in this digital age",
   "a tapestry of",
-  "a symphony of",
-  "a myriad of",
   "navigate the complexities",
   "unlock your best self",
   "journey of self-discovery",
   "embark on a journey",
   "unleash your potential",
   "elevate your life",
-  "transform your life today",
-  "at the end of the day",
-  "it's important to note",
-  "it is important to note",
-  "studies have shown",
-  "research suggests",
-  "game-changer",
-  "game changer",
   "harness the power",
   "holistic approach",
-  "in conclusion,",
-  "to sum up,",
-  "in summary,",
-  "let's dive in",
-  "buckle up",
-  "the good news is",
-  // Wellness-blog cringe
-  "manifest your best",
-  "vibrate higher",
-  "raise your vibration",
-  "high-vibe",
-  "good vibes only",
-  "toxic people",
-  "trauma response",
-  "healing journey",
-  "self-care routine",
-  "mindset shift",
 ];
 
-// Phrases that indicate the Oracle Lover voice showed up
-export const ORACLE_LOVER_MARKERS = [
-  "the body remembers",
-  "the body knows",
-  "you already know",
-  "listen",
-  "notice",
-  "stay with",
-  "what if",
-  "the truth is",
-  "here is what",
-  "the thing is",
-  "nobody told you",
-  "they never taught",
-  "permission",
-  "allowed to",
-  "underneath",
-  "the real",
+const SELF_REF_PATTERNS = [
+  /\bin (?:our|my) experience\b/i,
+  /\bwhen we tested\b/i,
+  /\bacross the articles we[''']ve published\b/i,
+  /\bin (?:our|my) own practice\b/i,
+  /\bover the years (?:i[''']ve|we[''']ve) seen\b/i,
+  /\bwe[''']ve found\b/i,
+  /\bwhat we[''']ve learned\b/i,
+  /\bin (?:our|my) work\b/i,
 ];
+
+const AUTHORITATIVE_DOMAINS = [
+  "nih.gov",
+  "cdc.gov",
+  "who.int",
+  "pubmed.ncbi.nlm.nih.gov",
+  "ncbi.nlm.nih.gov",
+  "nature.com",
+  "sciencedirect.com",
+  ".gov/",
+  ".edu/",
+  "apa.org",
+  "psychiatry.org",
+  "nimh.nih.gov",
+];
+
+function containsAuthoritativeOutbound(body: string): boolean {
+  const linkRe = /https?:\/\/[^\s)\]]+/g;
+  const urls = body.match(linkRe) || [];
+  for (const u of urls) {
+    const lower = u.toLowerCase();
+    for (const dom of AUTHORITATIVE_DOMAINS) {
+      if (lower.includes(dom)) return true;
+    }
+    // also accept .gov and .edu hosts in URL hostnames
+    if (/^https?:\/\/[^\/\s]+\.(?:gov|edu)(?:[\/?]|$)/i.test(u)) return true;
+  }
+  return false;
+}
+
+function countInternalLinks(body: string): number {
+  const linkRe = /\[[^\]]+\]\(([^)]+)\)/g;
+  let count = 0;
+  let m: RegExpExecArray | null;
+  while ((m = linkRe.exec(body)) !== null) {
+    const href = m[1];
+    if (
+      /theangerpractice\.com/i.test(href) ||
+      /^\/article\//i.test(href) ||
+      /^\/articles(?:\b|\/)/i.test(href) ||
+      /^\/(assessments|herbs|fire-toolkit|about)/i.test(href)
+    ) {
+      count++;
+    }
+  }
+  return count;
+}
+
+function hasTldrBlock(body: string): boolean {
+  return /<section[^>]*data-tldr=["']ai-overview["'][^>]*>/i.test(body);
+}
+
+function hasVisibleUpdated(body: string): boolean {
+  return (
+    /<time[^>]*datetime=/i.test(body) ||
+    /\b(?:last\s+)?updated\b[^.\n]{0,40}\b(20\d{2})\b/i.test(body)
+  );
+}
+
+function hasBottomByline(body: string): boolean {
+  const tail = body.slice(-900).toLowerCase();
+  return (
+    (tail.includes("oracle lover") || tail.includes("written by")) &&
+    /\b(20\d{2})\b/.test(tail)
+  );
+}
+
+function hasSelfReferencing(body: string): boolean {
+  return SELF_REF_PATTERNS.some((re) => re.test(body));
+}
 
 export function runVoiceGate(content: string, title: string): VoiceGateResult {
   const reasons: string[] = [];
@@ -101,73 +259,118 @@ export function runVoiceGate(content: string, title: string): VoiceGateResult {
   const lower = content.toLowerCase();
   const words = content.trim().split(/\s+/).length;
 
-  // 1. banned names
   for (const n of BANNED_NAMES) {
     if (lower.includes(n)) {
-      reasons.push(`banned name: "${n}"`);
-      score -= 40;
+      reasons.push(`leakage: banned name "${n}"`);
+      score -= 50;
     }
   }
 
-  // 2. banned phrases
-  let slopHits = 0;
+  const emDashCount = (content.match(/—/g) || []).length;
+  if (emDashCount > 0) {
+    reasons.push(`em-dash hard fail: ${emDashCount} occurrence(s)`);
+    score -= 40;
+  }
+
+  const bannedWordHits: string[] = [];
+  for (const w of BANNED_WORDS) {
+    const escaped = w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`(^|[^a-z])${escaped}(?=$|[^a-z])`, "gi");
+    const matches = content.match(re);
+    if (matches) {
+      bannedWordHits.push(`${w} x${matches.length}`);
+      score -= 8 * matches.length;
+    }
+  }
+  if (bannedWordHits.length) {
+    reasons.push(`banned words: ${bannedWordHits.join(", ")}`);
+  }
+
+  const bannedPhraseHits: string[] = [];
   for (const p of BANNED_PHRASES) {
-    const re = new RegExp(p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
-    const m = lower.match(re);
+    const escaped = p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(escaped, "gi");
+    const m = content.match(re);
     if (m) {
-      slopHits += m.length;
-      reasons.push(`banned phrase: "${p}" x${m.length}`);
-      score -= 8 * m.length;
+      bannedPhraseHits.push(`"${p}" x${m.length}`);
+      score -= 10 * m.length;
     }
   }
+  if (bannedPhraseHits.length) {
+    reasons.push(`banned phrases: ${bannedPhraseHits.join(", ")}`);
+  }
 
-  // 3. word count
-  if (words < 1200) {
-    reasons.push(`too short: ${words} words (min 1200)`);
+  if (words < 1800) {
+    reasons.push(`too short: ${words} words (min 1800)`);
     score -= 30;
   }
-  if (words > 2500) {
-    reasons.push(`too long: ${words} words (max 2500)`);
+  if (words > 3200) {
+    reasons.push(`too long: ${words} words (max 3200)`);
     score -= 10;
   }
 
-  // 4. em-dash spam
-  const emDashes = (content.match(/—/g) || []).length;
-  if (emDashes > Math.max(4, Math.floor(words / 250))) {
-    reasons.push(`em-dash spam: ${emDashes} in ${words} words`);
-    score -= 10;
-  }
+  const eeat = {
+    tldrBlock: hasTldrBlock(content),
+    selfReferencing: hasSelfReferencing(content),
+    internalLinks: countInternalLinks(content),
+    authoritativeOutbound: containsAuthoritativeOutbound(content),
+    visibleUpdated: hasVisibleUpdated(content),
+    bottomByline: hasBottomByline(content),
+  };
 
-  // 5. Oracle Lover markers
-  let olHits = 0;
-  for (const m of ORACLE_LOVER_MARKERS) {
-    if (lower.includes(m)) olHits++;
-  }
-  if (olHits < 2) {
-    reasons.push(`few Oracle Lover markers: ${olHits}`);
+  if (!eeat.tldrBlock) {
+    reasons.push('E-E-A-T: missing <section data-tldr="ai-overview"> TL;DR block');
     score -= 15;
   }
-
-  // 6. Second-person check
-  const youCount = (lower.match(/\byou(r|rself)?\b/g) || []).length;
-  if (youCount < 10) {
-    reasons.push(`insufficient second-person: ${youCount} "you" instances`);
+  if (!eeat.selfReferencing) {
+    reasons.push("E-E-A-T: no self-referencing language");
     score -= 10;
   }
+  if (eeat.internalLinks < 3) {
+    reasons.push(`E-E-A-T: only ${eeat.internalLinks} internal links (need >=3)`);
+    score -= 10;
+  }
+  if (!eeat.authoritativeOutbound) {
+    reasons.push("E-E-A-T: no authoritative outbound (.gov/.edu/NIH/CDC/WHO)");
+    score -= 10;
+  }
+  if (!eeat.visibleUpdated) {
+    reasons.push("E-E-A-T: no visible last-updated datetime");
+    score -= 8;
+  }
+  if (!eeat.bottomByline) {
+    reasons.push("E-E-A-T: no bottom byline block");
+    score -= 8;
+  }
 
-  // 7. Title must not be generic
   if (/^\s*(the|a|an)\s+ultimate\s+guide/i.test(title)) {
     reasons.push("generic 'ultimate guide' title");
     score -= 20;
   }
 
-  const pass = score >= 65 && slopHits === 0 && words >= 1200;
+  const pass =
+    score >= 70 &&
+    emDashCount === 0 &&
+    bannedWordHits.length === 0 &&
+    bannedPhraseHits.length === 0 &&
+    words >= 1800 &&
+    eeat.tldrBlock &&
+    eeat.internalLinks >= 3 &&
+    eeat.authoritativeOutbound &&
+    eeat.bottomByline;
 
   return {
     pass,
     score: Math.max(0, score),
     reasons,
     wordCount: words,
-    oracleLoverPhraseCount: olHits,
+    emDashCount,
+    bannedWordHits,
+    bannedPhraseHits,
+    eeat,
+    oracleLoverPhraseCount: 0,
   };
 }
+
+// Retained for backwards compat with any old import sites.
+export const ORACLE_LOVER_MARKERS: string[] = [];
