@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { CLAUDE, SITE, amazonUrl } from "./config.js";
+import { CLAUDE, SITE, AMAZON, amazonUrl } from "./config.js";
+import { listAllArticles } from "./store.js";
 import { runVoiceGate } from "./voiceGate.js";
 import { HERBS } from "./herbs.js";
 import { BOOKS } from "./books.js";
@@ -160,6 +161,135 @@ export function scrubEmDashes(s: string): string {
 }
 
 /**
+ * Plain-English substitutions for stray banned words. Applied AFTER the
+ * model has already been told not to use them, as a deterministic safety
+ * net for stragglers like "underscore" / "amplify" that Claude likes.
+ * Substitutions preserve case and inflection where possible.
+ */
+const BANNED_WORD_SUBS: Record<string, string> = {
+  delve: "look",
+  delves: "looks",
+  delved: "looked",
+  delving: "looking",
+  tapestry: "weave",
+  paradigm: "frame",
+  synergy: "overlap",
+  leverage: "use",
+  leveraged: "used",
+  leveraging: "using",
+  unlock: "open",
+  unlocked: "opened",
+  unlocking: "opening",
+  empower: "strengthen",
+  empowered: "strengthened",
+  empowering: "strengthening",
+  empowerment: "strength",
+  utilize: "use",
+  utilized: "used",
+  utilizing: "using",
+  utilization: "use",
+  pivotal: "central",
+  embark: "begin",
+  embarking: "beginning",
+  underscore: "point to",
+  underscores: "points to",
+  underscored: "pointed to",
+  paramount: "essential",
+  seamlessly: "cleanly",
+  seamless: "clean",
+  beacon: "signal",
+  curate: "choose",
+  curated: "chosen",
+  curating: "choosing",
+  bespoke: "custom",
+  resonate: "land",
+  resonates: "lands",
+  resonating: "landing",
+  harness: "use",
+  harnesses: "uses",
+  harnessing: "using",
+  intricate: "detailed",
+  plethora: "many",
+  myriad: "many",
+  transformative: "changing",
+  groundbreaking: "new",
+  innovative: "new",
+  revolutionary: "new",
+  holistic: "whole-body",
+  multifaceted: "layered",
+  stakeholders: "people involved",
+  ecosystem: "network",
+  furthermore: "also",
+  moreover: "also",
+  additionally: "also",
+  consequently: "so",
+  subsequently: "then",
+  thereby: "so",
+  streamline: "simplify",
+  streamlined: "simplified",
+  streamlining: "simplifying",
+  optimize: "improve",
+  optimized: "improved",
+  optimizing: "improving",
+  facilitate: "help",
+  facilitated: "helped",
+  facilitating: "helping",
+  amplify: "strengthen",
+  amplified: "strengthened",
+  amplifying: "strengthening",
+  catalyze: "start",
+  catalyzed: "started",
+  catalyzing: "starting",
+};
+const BANNED_PHRASE_SUBS: Record<string, string> = {
+  "it's important to note": "worth noting",
+  "it is important to note": "worth noting",
+  "in conclusion": "to close",
+  "in summary": "to close",
+  "in the realm of": "in",
+  "dive deep into": "look at",
+  "at the end of the day": "in the end",
+  "in today's fast-paced world": "today",
+  "plays a crucial role": "matters",
+  "a testament to": "a sign of",
+  "when it comes to": "with",
+  "cannot be overstated": "is real",
+  "needless to say": "of course",
+  "first and foremost": "first",
+  "last but not least": "finally",
+  "delve into": "look at",
+  "a tapestry of": "a weave of",
+  "navigate the complexities": "work through the difficulty",
+  "unlock your best self": "meet yourself",
+  "journey of self-discovery": "work of self-knowing",
+  "embark on a journey": "begin",
+  "unleash your potential": "meet yourself",
+  "elevate your life": "change your life",
+  "harness the power": "use the force",
+  "holistic approach": "whole-body approach",
+};
+
+function matchCase(target: string, source: string): string {
+  if (source[0] === source[0]?.toUpperCase()) return target[0].toUpperCase() + target.slice(1);
+  return target;
+}
+
+export function scrubBannedLexicon(s: string): string {
+  let out = s;
+  // Phrases first (longer matches), case-insensitive, preserving newlines
+  for (const [phrase, sub] of Object.entries(BANNED_PHRASE_SUBS)) {
+    const re = new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+    out = out.replace(re, (m) => matchCase(sub, m));
+  }
+  // Single words, word-boundary aware
+  for (const [word, sub] of Object.entries(BANNED_WORD_SUBS)) {
+    const re = new RegExp(`(^|[^A-Za-z])${word}(?=$|[^A-Za-z])`, "gi");
+    out = out.replace(re, (m, lead) => lead + matchCase(sub, m.replace(lead, "")));
+  }
+  return out;
+}
+
+/**
  * Strict allowlist enforcement for Amazon ASINs.
  */
 function enforceVerifiedAsinsOnly(
@@ -253,7 +383,7 @@ VOICE
 
 ABSOLUTE PROHIBITIONS
 - NO em-dashes anywhere. Use a plain hyphen with spaces if a connector is needed.
-- NEVER use these words: delve, tapestry, paradigm, synergy, leverage, unlock, empower, utilize, pivotal, embark, underscore, paramount, seamlessly, robust, beacon, foster, elevate, curate, curated, bespoke, resonate, harness, intricate, plethora, myriad, comprehensive, transformative, groundbreaking, innovative, cutting-edge, revolutionary, state-of-the-art, ever-evolving, profound, holistic, nuanced, multifaceted, stakeholders, ecosystem, landscape, realm, sphere, domain, furthermore, moreover, additionally, consequently, subsequently, thereby, streamline, optimize, facilitate, amplify, catalyze.
+- NEVER use these words (or any of their inflections): delve, tapestry, paradigm, synergy, leverage, unlock, empower, utilize, pivotal, embark, underscore, paramount, seamlessly, beacon, curate, bespoke, resonate, harness, intricate, plethora, myriad, transformative, groundbreaking, innovative, cutting-edge, revolutionary, state-of-the-art, ever-evolving, holistic, multifaceted, stakeholders, ecosystem, furthermore, moreover, additionally, consequently, subsequently, thereby, streamline, optimize, facilitate, amplify, catalyze. If you find yourself reaching for one of these, REWRITE the sentence in plainer English. "Elevated blood pressure" / "high blood pressure" / "raised blood pressure" are all fine - the banned word is the marketing-flavored "elevate" / "unlock" / "empower" tone, not anatomy.
 - NEVER use these phrases: "it's important to note", "in conclusion", "in summary", "in the realm of", "dive deep into", "at the end of the day", "in today's fast-paced world", "plays a crucial role", "a testament to", "when it comes to", "cannot be overstated", "needless to say", "first and foremost", "last but not least", "delve into", "a tapestry of", "navigate the complexities", "unlock your best self", "journey of self-discovery", "embark on a journey", "harness the power", "holistic approach".
 - NEVER name: Paul Wagner, Krishna, Kalesh, Shrikrishna, Kaleshwar. Never reference paulwagner.com.
 - Never narrate yourself as an AI. Never explain that you are writing an article.
@@ -301,11 +431,13 @@ One soft companion-site mention as a markdown link in flow: [theoraclelover.com]
 
 Output order: TL;DR section, then "DEK: ..." line, then a blank line, then the markdown body. Do NOT output the title - we have it. Do NOT wrap in code fences.`;
 
+  // Stream the response so very long bodies (3-5k words) finish reliably
+  // even on slow paths, and we can log progress.
   const ac = new AbortController();
-  const killT = setTimeout(() => ac.abort(), 600_000);
-  let resp: Anthropic.Messages.Message;
+  const killT = setTimeout(() => ac.abort(), 900_000);
+  let raw = "";
   try {
-    resp = await client.messages.create(
+    const stream = client.messages.stream(
       {
         model: CLAUDE.model,
         max_tokens: 16000,
@@ -315,13 +447,23 @@ Output order: TL;DR section, then "DEK: ..." line, then a blank line, then the m
       },
       { signal: ac.signal },
     );
+    let chunkCount = 0;
+    for await (const event of stream) {
+      if (
+        event.type === "content_block_delta" &&
+        event.delta?.type === "text_delta" &&
+        typeof event.delta.text === "string"
+      ) {
+        raw += event.delta.text;
+        chunkCount++;
+        if (chunkCount % 200 === 0) {
+          console.log(`[gen-stream] ${raw.length} chars so far`);
+        }
+      }
+    }
+    await stream.finalMessage();
   } finally {
     clearTimeout(killT);
-  }
-
-  let raw = "";
-  for (const block of resp.content) {
-    if (block.type === "text") raw += block.text;
   }
   raw = raw.trim();
 
@@ -370,16 +512,85 @@ Output order: TL;DR section, then "DEK: ..." line, then a blank line, then the m
     }
   }
 
-  // Append author byline at bottom (E-E-A-T signal 5 + 6)
+  // ---- Deterministic E-E-A-T injections (safety net for Claude misses) ----
+
+  // 1) Authoritative outbound: if no .gov/.edu/NIH/APA/CDC/PubMed link present,
+  //    weave in one rotating source as a paragraph near the top of the body.
+  const hasAuthority =
+    /\.gov|\.edu|nih\.gov|cdc\.gov|pubmed|nimh\.|apa\.org|who\.int/i.test(body);
+  if (!hasAuthority) {
+    const src = AUTHORITATIVE_SOURCES[Math.floor(Math.random() * AUTHORITATIVE_SOURCES.length)];
+    const insertion = `\n\nThe research backs this up. See [${src.label}](${src.url}) for the underlying physiology - the body's response to anger is well documented, even when the cultural script around it is not.\n\n`;
+    // Inject after the first H2 paragraph if possible, else prepend.
+    const firstH2End = body.search(/\n## /);
+    if (firstH2End > 0) {
+      const insertionPoint = body.indexOf("\n\n", firstH2End + 4);
+      if (insertionPoint > 0) {
+        body = body.slice(0, insertionPoint) + insertion + body.slice(insertionPoint);
+      } else {
+        body = insertion + body;
+      }
+    } else {
+      body = insertion + body;
+    }
+  }
+
+  // 2) Internal links: ensure at least 3. Count current internal links;
+  //    if fewer than 3, append a "Keep reading" section that pulls from
+  //    INTERNAL_LINKS pool + any related published article slugs.
+  const internalRe = /\[[^\]]+\]\((?:https?:\/\/(?:www\.)?theangerpractice\.com)?(\/(?:article|articles|assessments|herbs|fire-toolkit|about)\b[^)]*)\)/gi;
+  const currentInternal = (body.match(internalRe) || []).length;
+  if (currentInternal < 3) {
+    const need = 3 - currentInternal;
+    const pool = [...INTERNAL_LINKS];
+    // Try to add 1-2 related published articles by simple title-word overlap
+    try {
+      const all = listAllArticles().filter((a: any) => a.published === true && a.title !== topic);
+      const topicWords = new Set(
+        topic.toLowerCase().split(/\W+/).filter((w) => w.length > 4),
+      );
+      const scored = all.map((a: any) => ({
+        a,
+        score: a.title
+          .toLowerCase()
+          .split(/\W+/)
+          .filter((w: string) => w.length > 4 && topicWords.has(w)).length,
+      }));
+      scored.sort((x, y) => y.score - x.score);
+      for (const { a, score } of scored.slice(0, 4)) {
+        if (score > 0) pool.unshift({ label: a.title, url: `/article/${a.slug}` });
+      }
+    } catch {
+      // listAllArticles may not be available pre-bootstrap; fine
+    }
+    const links = pool.slice(0, Math.max(need, 3))
+      .map((l) => `- [${l.label}](${l.url})`)
+      .join("\n");
+    body += `\n\n## Keep reading\n${links}\n`;
+  }
+
+  // 3) Append author byline at bottom (E-E-A-T signal 5 + 6)
   body += buildAuthorByline(topic, isoNow);
 
-  // Reassemble: TL;DR (if present) at top, then body
+  // 4) TL;DR fallback: synthesize from dek + first paragraph if Claude
+  //    didn't include one.
+  if (!tldr) {
+    const firstPara = (body.match(/^([^\n#].+?)(?:\n\n|$)/m) || ["", ""])[1].slice(0, 240);
+    const dekLine = (dek || `${topic}.`).slice(0, 240);
+    tldr = `<section data-tldr="ai-overview" aria-label="In short">\n<p><strong>TL;DR.</strong> ${dekLine} ${firstPara}</p>\n</section>`;
+  }
+
+  // Reassemble: TL;DR at top, then body
   let full = "";
-  if (tldr) full += tldr + "\n\n";
+  full += tldr + "\n\n";
   full += body;
 
-  // Hard scrub em-dashes — model occasionally still emits them despite system prompt
+  // Hard scrub em-dashes - model occasionally still emits them despite system prompt
   full = scrubEmDashes(full);
+  // Deterministic banned-lexicon scrub - replaces stragglers ("underscore",
+  // "amplify", "furthermore") with plain-English subs. The model has already
+  // been told not to use these; this is a safety net.
+  full = scrubBannedLexicon(full);
 
   const gate = runVoiceGate(full, topic);
 
@@ -438,6 +649,12 @@ export async function generateWithRetry(topic: string, maxTries = 6): Promise<Ge
     }
   }
   if (!best) throw new Error(`Article generation failed for: ${topic}`);
+  // If the best attempt still didn't pass the gate, refuse rather than
+  // publishing a near-miss. The caller can keep the existing article.
+  const finalGate = runVoiceGate(best.bodyMarkdown, best.title);
+  if (!finalGate.pass) {
+    throw new Error(`Voice gate refused after ${maxTries} attempts for: ${topic} | ${finalGate.reasons.slice(0,3).join(" | ")}`);
+  }
   if (best.wordCount < 1800) throw new Error(`Article too short for: ${topic} (${best.wordCount}w)`);
   return best;
 }

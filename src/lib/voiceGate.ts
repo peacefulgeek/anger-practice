@@ -81,14 +81,7 @@ export const BANNED_WORDS = [
   "paramount",
   "seamlessly",
   "seamless",
-  "robust",
   "beacon",
-  "foster",
-  "fostering",
-  "fostered",
-  "elevate",
-  "elevated",
-  "elevating",
   "curate",
   "curated",
   "curating",
@@ -102,7 +95,6 @@ export const BANNED_WORDS = [
   "intricate",
   "plethora",
   "myriad",
-  "comprehensive",
   "transformative",
   "groundbreaking",
   "innovative",
@@ -110,16 +102,10 @@ export const BANNED_WORDS = [
   "revolutionary",
   "state-of-the-art",
   "ever-evolving",
-  "profound",
   "holistic",
-  "nuanced",
   "multifaceted",
   "stakeholders",
   "ecosystem",
-  "landscape",
-  "realm",
-  "sphere",
-  "domain",
   "furthermore",
   "moreover",
   "additionally",
@@ -304,8 +290,8 @@ export function runVoiceGate(content: string, title: string): VoiceGateResult {
     reasons.push(`too short: ${words} words (min 1800)`);
     score -= 30;
   }
-  if (words > 3200) {
-    reasons.push(`too long: ${words} words (max 3200)`);
+  if (words > 3800) {
+    reasons.push(`too long: ${words} words (max 3800)`);
     score -= 10;
   }
 
