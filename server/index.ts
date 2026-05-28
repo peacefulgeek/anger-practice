@@ -19,7 +19,9 @@ import {
   listArticles,
   listAllArticles,
   bootstrapStore,
+  saveArticle,
 } from "../src/lib/store.js";
+import { generateWithRetry } from "../src/lib/generator.js";
 import { activeDriver } from "../src/lib/bunnyStore.js";
 import {
   injectHead,
@@ -276,6 +278,135 @@ async function startServer() {
 
   // ---------- admin refresh ----------
   const ADMIN_SECRET = process.env.ADMIN_SECRET || process.env.JWT_SECRET || "";
+
+  // ----- Banned-word / banned-phrase detection (mirrors voice gate) -----
+  const BANNED_WORDS = ["delve","tapestry","paradigm","synergy","leverage","unlock","empower","utilize","pivotal","embark","underscore","paramount","seamlessly","robust","beacon","foster","elevate","curate","bespoke","resonate","harness","intricate","plethora","myriad","comprehensive","transformative","groundbreaking","innovative","cutting-edge","revolutionary","state-of-the-art","ever-evolving","profound","holistic","nuanced","multifaceted","stakeholders","ecosystem","landscape","realm","sphere","domain","furthermore","moreover","additionally","consequently","subsequently","thereby","streamline","optimize","facilitate","amplify","catalyze"];
+  const BANNED_PHRASES = ["it's important to note","in conclusion","in summary","in the realm of","dive deep into","at the end of the day","in today's fast-paced world","plays a crucial role","a testament to","when it comes to","cannot be overstated","needless to say","first and foremost","last but not least","delve into","a tapestry of","navigate the complexities","unlock your best self","journey of self-discovery","embark on a journey","harness the power","holistic approach"];
+  function isViolator(body: string): boolean {
+    const lower = body.toLowerCase();
+    for (const w of BANNED_WORDS) {
+      const re = new RegExp("(^|[^a-z])" + w.replace(/-/g, "\\-") + "(?=$|[^a-z])", "i");
+      if (re.test(body)) return true;
+    }
+    for (const p of BANNED_PHRASES) if (lower.includes(p)) return true;
+    return false;
+  }
+
+  // ----- POST /api/admin/rewrite -----
+  // Body: { slugs?: string[]; allViolators?: boolean; limit?: number; concurrency?: number }
+  // Header: x-admin-secret: <ADMIN_SECRET>
+  // Runs Claude rewrites for the requested articles, with the strict voice
+  // gate. Saves to Bunny via saveArticle. Returns a result summary.
+  let rewriteInFlight = false;
+  app.post("/api/admin/rewrite", express.json(), async (req, res) => {
+    if (!ADMIN_SECRET || req.header("x-admin-secret") !== ADMIN_SECRET) {
+      return res.status(401).json({ ok: false, error: "unauthorized" });
+    }
+    if (rewriteInFlight) {
+      return res.status(409).json({ ok: false, error: "rewrite already in flight" });
+    }
+    rewriteInFlight = true;
+    const body = (req.body || {}) as { slugs?: string[]; allViolators?: boolean; limit?: number; concurrency?: number };
+    const conc = Math.max(1, Math.min(8, body.concurrency || 4));
+    const limit = Math.max(1, Math.min(200, body.limit || 200));
+
+    // Build target slug list
+    let targets: { slug: string; title: string }[] = [];
+    try {
+      const all = listAllArticles();
+      if (Array.isArray(body.slugs) && body.slugs.length) {
+        const wanted = new Set(body.slugs);
+        targets = all.filter((a) => wanted.has(a.slug)).map((a) => ({ slug: a.slug, title: a.title }));
+      } else if (body.allViolators) {
+        targets = all
+          .filter((a) => a.published === true && isViolator(a.bodyMarkdown || ""))
+          .slice(0, limit)
+          .map((a) => ({ slug: a.slug, title: a.title }));
+      } else {
+        rewriteInFlight = false;
+        return res.status(400).json({ ok: false, error: "send { slugs: [...] } or { allViolators: true }" });
+      }
+    } catch (e) {
+      rewriteInFlight = false;
+      return res.status(500).json({ ok: false, error: (e as Error).message });
+    }
+
+    // Respond immediately; run rewrite in the background.
+    res.json({ ok: true, started: targets.length, concurrency: conc, limit, mode: body.allViolators ? "all-violators" : "slug-list" });
+
+    (async () => {
+      const startedAt = Date.now();
+      let ok = 0, failed = 0;
+      let cursor = 0;
+      const results: { slug: string; status: string; error?: string }[] = [];
+      console.log(`[admin:rewrite] running ${targets.length} articles conc=${conc}`);
+      async function worker(id: number) {
+        while (cursor < targets.length) {
+          const i = cursor++;
+          const t = targets[i];
+          const tag = `[admin:rewrite ${i + 1}/${targets.length} w${id}] ${t.slug}`;
+          try {
+            const orig = listAllArticles().find((a) => a.slug === t.slug);
+            if (!orig) {
+              console.error(`${tag} original not found`);
+              results.push({ slug: t.slug, status: "missing" });
+              failed++;
+              continue;
+            }
+            const fresh = await generateWithRetry(orig.title, 5);
+            const now = new Date().toISOString();
+            const merged = {
+              ...orig,
+              bodyMarkdown: fresh.bodyMarkdown,
+              dek: fresh.dek || orig.dek,
+              wordCount: fresh.wordCount,
+              voiceScore: fresh.voiceScore,
+              researchers: fresh.researchers,
+              inlineProducts: fresh.inlineProducts,
+              bottomProducts: fresh.bottomProducts,
+              updatedAt: now,
+              author: "The Oracle Lover",
+              byline: `By The Oracle Lover - ${new Date(now).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}`,
+              source: "claude-sonnet-4-5",
+            } as any;
+            await saveArticle(merged);
+            console.log(`${tag} OK ${fresh.wordCount}w v=${fresh.voiceScore}`);
+            results.push({ slug: t.slug, status: "rewritten" });
+            ok++;
+          } catch (e) {
+            const msg = (e as Error).message || "unknown";
+            console.error(`${tag} FAIL: ${msg}`);
+            results.push({ slug: t.slug, status: "failed", error: msg });
+            failed++;
+          }
+        }
+      }
+      try {
+        await Promise.all(Array.from({ length: conc }, (_, i) => worker(i)));
+      } finally {
+        rewriteInFlight = false;
+      }
+      const ms = Date.now() - startedAt;
+      console.log(`[admin:rewrite] DONE in ${Math.round(ms / 1000)}s ok=${ok} failed=${failed}`);
+      // Stash last run for /api/admin/rewrite-status
+      (globalThis as any).__lastRewriteRun = { startedAt, finishedAt: Date.now(), ok, failed, results };
+    })().catch((e) => {
+      console.error("[admin:rewrite] background error:", e);
+      rewriteInFlight = false;
+    });
+  });
+
+  app.get("/api/admin/rewrite-status", (req, res) => {
+    if (!ADMIN_SECRET || req.header("x-admin-secret") !== ADMIN_SECRET) {
+      return res.status(401).json({ ok: false, error: "unauthorized" });
+    }
+    res.json({
+      ok: true,
+      inFlight: rewriteInFlight,
+      lastRun: (globalThis as any).__lastRewriteRun || null,
+    });
+  });
+
   app.post("/api/admin/refresh", async (req, res) => {
     if (!ADMIN_SECRET || req.header("x-admin-secret") !== ADMIN_SECRET) {
       return res.status(401).json({ ok: false, error: "unauthorized" });
