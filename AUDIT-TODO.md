@@ -1,35 +1,10 @@
-# Full audit todo — anger-practice
+# Generate-all-307 todo
 
-## Phase 1: Inventory
-- [ ] Tree of src/, server/, client/src/, scripts/
-- [ ] tsc --noEmit on full project
-- [ ] pnpm build clean
-- [ ] grep for known anti-patterns (any, ts-ignore, TODO, console.error, throw)
-
-## Phase 2: Server / lib / cron / scripts
-- [ ] server/index.ts — route order, error handling
-- [ ] src/lib/store.ts — bunny resync, listArticles vs listAllArticles
-- [ ] src/lib/bunnyStore.ts — error handling, retries
-- [ ] src/lib/config.ts — env defaults safe
-- [ ] src/lib/herbs.ts — all 133 ASINs valid shape
-- [ ] src/lib/articles*.ts — generation, validation
-- [ ] src/cron/index.ts — schedules, 1800w gate, gated promotion
-- [ ] scripts/*.mjs — paths, error paths, push-to-bunny
-
-## Phase 3: Client
-- [ ] client/index.html
-- [ ] client/src/App.tsx — routes, layout
-- [ ] client/src/components/SiteLayout.tsx
-- [ ] client/src/pages/Home.tsx — broken images? lazy state?
-- [ ] client/src/pages/Articles.tsx — search/filter, dates
-- [ ] client/src/pages/Article.tsx — sidebar/body, formatDate, gated state
-- [ ] client/src/pages/Assessments.tsx + Assessment.tsx
-- [ ] client/src/pages/Herbs.tsx
-- [ ] client/src/pages/FireToolkit.tsx
-- [ ] client/src/pages/About.tsx
-- [ ] client/src/data/articles.json fresh
-- [ ] tailwind tokens, font loading
-
-## Phase 4: Fix all + verify
-## Phase 5: Push + verify live
-## Phase 6: Report
+- [ ] Read queue, last gated scheduledFor, confirm topic list
+- [ ] Test deepseek-v4-pro reachable from sandbox via the project's lib
+- [ ] Generate 307 articles in parallel (subagents that emit article JSON conforming to StoredArticle)
+- [ ] Generate 307 unique hero images, upload to Bunny
+- [ ] Assign scheduledFor for each, Mon-Sat 9am PT, starting after existing gated queue
+- [ ] Push all 307 articles to Bunny
+- [ ] Run prebuild ASIN guard, fix any non-cabinet ASIN, build, push to git
+- [ ] Wait Railway, verify live: queue length 0, gated count = current+307, schedule looks right

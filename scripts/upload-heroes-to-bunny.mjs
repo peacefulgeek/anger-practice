@@ -11,7 +11,9 @@ const BUNNY_ZONE = 'anger-practice';
 const BUNNY_KEY = process.env.BUNNY_KEY || 'f5c045db-2822-4ad7-98ccba130603-6024-44fc';
 const PUBLIC_BASE = 'https://anger-practice.b-cdn.net';
 
-const map = JSON.parse(readFileSync('/home/ubuntu/anger-practice/data/slug-to-genimage-unified.json', 'utf8'));
+const SOURCE = process.env.HEROES_MAP || '/tmp/heroes-to-upload.json';
+const map = JSON.parse(readFileSync(SOURCE, 'utf8'));
+console.log(`Loaded ${Object.keys(map).length} heroes from ${SOURCE}`);
 const slugs = Object.keys(map);
 console.log(`Processing ${slugs.length} hero images`);
 
@@ -77,7 +79,9 @@ async function runBatch() {
 
 await runBatch();
 
-writeFileSync('/home/ubuntu/anger-practice/data/slug-to-bunny-hero.json', JSON.stringify(out, null, 2));
+const OUT = process.env.HEROES_OUT || '/home/ubuntu/anger-practice/data/slug-to-bunny-hero-v2.json';
+writeFileSync(OUT, JSON.stringify(out, null, 2));
+console.log(`Wrote slug→cdn map → ${OUT}`);
 console.log(`\nUploaded ${Object.keys(out).length}/${slugs.length}`);
 console.log(`Failed: ${failed.length}`);
 if (failed.length) {
