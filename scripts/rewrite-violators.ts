@@ -31,7 +31,9 @@ const STORAGE_KEY = process.env.BUNNY_STORAGE_KEY || "f5c045db-2822-4ad7-98ccba1
 const PUSH = process.env.PUSH_BUNNY !== "0";
 const CONC = Number(process.env.CONCURRENCY || 6);
 
-const BANNED_WORDS = ["delve","tapestry","paradigm","synergy","leverage","unlock","empower","utilize","pivotal","embark","underscore","paramount","seamlessly","robust","beacon","foster","elevate","curate","bespoke","resonate","harness","intricate","plethora","myriad","comprehensive","transformative","groundbreaking","innovative","cutting-edge","revolutionary","state-of-the-art","ever-evolving","profound","holistic","nuanced","multifaceted","stakeholders","ecosystem","landscape","realm","sphere","domain","furthermore","moreover","additionally","consequently","subsequently","thereby","streamline","optimize","facilitate","amplify","catalyze"];
+// Aligned with current voiceGate.ts + scrubBannedLexicon (medical-overlap
+// words like elevate/robust/comprehensive/landscape/realm/domain removed).
+const BANNED_WORDS = ["delve","tapestry","paradigm","synergy","leverage","unlock","empower","utilize","pivotal","embark","underscore","paramount","seamlessly","beacon","curate","bespoke","resonate","harness","intricate","plethora","myriad","transformative","groundbreaking","innovative","cutting-edge","revolutionary","state-of-the-art","ever-evolving","holistic","multifaceted","stakeholders","ecosystem","furthermore","moreover","additionally","consequently","subsequently","thereby","streamline","optimize","facilitate","amplify","catalyze"];
 const BANNED_PHRASES = ["it's important to note","in conclusion","in summary","in the realm of","dive deep into","at the end of the day","in today's fast-paced world","plays a crucial role","a testament to","when it comes to","cannot be overstated","needless to say","first and foremost","last but not least","delve into","a tapestry of","navigate the complexities","unlock your best self","journey of self-discovery","embark on a journey","harness the power","holistic approach"];
 
 function isViolator(body) {
@@ -99,8 +101,17 @@ async function processOne({ file, a }, idx, total) {
 
 async function main() {
   const all = loadAll();
-  const targets = all.filter(({ a }) => a.published === true && isViolator(a.bodyMarkdown || ""));
-  console.log(`[rewrite] ${targets.length} published violators | conc=${CONC} | push=${PUSH}`);
+  // INCLUDE_GATED=1 -> rewrite gated/unpublished violators instead of published ones.
+  const includeGated = process.env.INCLUDE_GATED === "1";
+  const targets = all.filter(({ a }) => {
+    const isPub = a.published === true;
+    if (includeGated && isPub) return false;
+    if (!includeGated && !isPub) return false;
+    return isViolator(a.bodyMarkdown || "");
+  });
+  console.log(
+    `[rewrite] ${targets.length} ${includeGated ? "gated" : "published"} violators | conc=${CONC} | push=${PUSH}`,
+  );
 
   let cursor = 0;
   const results = [];
