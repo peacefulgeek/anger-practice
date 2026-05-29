@@ -16,53 +16,35 @@ import {
 import { HERBS } from "../lib/herbs.js";
 import { BOOKS } from "../lib/books.js";
 
-// ---- Cron 1: publish next queued article (or promote next gated) — 6/week ----
+// ---- Cron 1: promote 1 gated article per weekday (Mon-Fri) ----
+// Flow: gated queue → promote oldest matured draft → stop when empty.
+// NO fallback generation. When the gated queue is empty, nothing happens.
 async function publishNext() {
   if (!AUTO_GEN_ENABLED) return;
 
-  // First: promote any gated draft whose scheduledFor has matured AND that
-  // already passes the 1,800-word floor. Anything shorter never gets promoted.
   const now = Date.now();
   const MIN_WORDS = 1800;
   const gated = listAllArticles().filter(
     (a) =>
       a.published !== true &&
-      a.scheduledFor &&
-      new Date(a.scheduledFor).getTime() <= now &&
       (a.wordCount ?? 0) >= MIN_WORDS,
   );
-  if (gated.length) {
-    // Oldest-scheduled first
-    gated.sort((a, b) => new Date(a.scheduledFor!).getTime() - new Date(b.scheduledFor!).getTime());
-    const target = gated[0];
-    target.published = true;
-    target.publishedAt = new Date().toISOString();
-    await saveArticle(target);
-    console.log(`[cron:publish] promoted gated draft: ${target.slug} (${target.wordCount}w)`);
-    return; // one action per tick
-  }
-
-  const topic = await popQueue();
-  if (!topic) {
-    console.log("[cron:publish] queue empty");
+  if (!gated.length) {
+    console.log("[cron:publish] gated queue empty — nothing to promote. Stopping.");
     return;
   }
-  console.log(`[cron:publish] generating: ${topic}`);
-  try {
-    const a = await generateWithRetry(topic, 2);
-    await saveArticle({
-      ...a,
-      publishedAt: new Date().toISOString(),
-    });
-    console.log(`[cron:publish] OK ${a.slug} (${a.wordCount}w, score=${a.voiceScore})`);
-  } catch (e) {
-    console.error(`[cron:publish] FAILED ${topic}:`, (e as Error).message);
-    // Put topic back at end of queue
-    const q = await readQueue();
-    q.push(topic);
-    const { writeQueue } = await import("../lib/store.js");
-    await writeQueue(q);
-  }
+
+  // Oldest-created first (FIFO from bulk-seed order)
+  gated.sort((a, b) => {
+    const tA = a.scheduledFor ? new Date(a.scheduledFor).getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+    const tB = b.scheduledFor ? new Date(b.scheduledFor).getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+    return tA - tB;
+  });
+  const target = gated[0];
+  target.published = true;
+  target.publishedAt = new Date().toISOString();
+  await saveArticle(target);
+  console.log(`[cron:publish] promoted gated draft: ${target.slug} (${target.wordCount}w)`);
 }
 
 // ---- Cron 2: product spotlight rotation (daily) ----
@@ -262,10 +244,8 @@ export function startCrons() {
   }
   console.log("[cron] starting 5 schedulers");
 
-  // 6 articles per week: Monday–Saturday at 09:00 PT (Sundays off).
-  // Earlier this was every 6 hours (4/day) — too aggressive for a sustainable
-  // editorial cadence once the launch backlog was published.
-  cron.schedule("0 9 * * 1-6", publishNext, { timezone: "America/Los_Angeles" });
+  // 1 article per weekday (Mon-Fri) at 09:00 PT. When gated queue is empty, stops.
+  cron.schedule("0 9 * * 1-5", publishNext, { timezone: "America/Los_Angeles" });
 
   // Daily at 07:00: rotate product spotlight
   cron.schedule("0 7 * * *", rotateProductSpotlight, { timezone: "America/Los_Angeles" });
