@@ -101,17 +101,22 @@ async function processOne({ file, a }, idx, total) {
 
 async function main() {
   const all = loadAll();
-  // INCLUDE_GATED=1 -> rewrite gated/unpublished violators instead of published ones.
-  const includeGated = process.env.INCLUDE_GATED === "1";
+  // REWRITE_ALL_GATED=1 -> rewrite ALL gated articles (skip those already claude-authored)
+  // INCLUDE_GATED=1 -> rewrite only gated violators
+  const rewriteAllGated = process.env.REWRITE_ALL_GATED === "1";
+  const includeGated = rewriteAllGated || process.env.INCLUDE_GATED === "1";
   const targets = all.filter(({ a }) => {
     const isPub = a.published === true;
-    if (includeGated && isPub) return false;
-    if (!includeGated && !isPub) return false;
+    if (isPub) return false; // never touch published in this mode
+    if (rewriteAllGated) {
+      // Skip articles already rewritten by Claude this session
+      return a.source !== "claude-sonnet-4-5";
+    }
+    if (!includeGated) return false;
     return isViolator(a.bodyMarkdown || "");
   });
-  console.log(
-    `[rewrite] ${targets.length} ${includeGated ? "gated" : "published"} violators | conc=${CONC} | push=${PUSH}`,
-  );
+  const mode = rewriteAllGated ? "ALL gated (non-claude)" : includeGated ? "gated violators" : "published violators";
+  console.log(`[rewrite] ${targets.length} ${mode} | conc=${CONC} | push=${PUSH}`);
 
   let cursor = 0;
   const results = [];
