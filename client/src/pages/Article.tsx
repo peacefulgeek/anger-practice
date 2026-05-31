@@ -16,7 +16,18 @@ function formatDate(iso: string | null | undefined): string {
 export default function Article() {
   const { slug } = useParams<{ slug: string }>();
   const articles = useArticles();
-  const article = useArticle(slug);
+  const { article, loading } = useArticle(slug);
+
+  if (loading) {
+    return (
+      <div className="container py-24 text-center">
+        <div className="animate-pulse">
+          <div className="h-8 bg-[var(--ink)]/10 rounded w-2/3 mx-auto mb-4" />
+          <div className="h-4 bg-[var(--ink)]/10 rounded w-1/2 mx-auto" />
+        </div>
+      </div>
+    );
+  }
 
   if (!article) {
     return (
@@ -91,7 +102,7 @@ export default function Article() {
         <aside className="lg:col-span-3 lg:sticky lg:top-28 self-start text-sm">
           <div className="dateline mb-3">Referenced</div>
           <ul className="space-y-1.5 text-[var(--muted-foreground)]">
-            {article.researchers.map((r) => (
+            {(article.researchers || []).map((r) => (
               <li key={r}>· {r}</li>
             ))}
           </ul>
@@ -128,7 +139,7 @@ export default function Article() {
           </div>
 
           {/* Bottom products */}
-          {article.bottomProducts?.length > 0 && (
+          {article.bottomProducts && article.bottomProducts.length > 0 && (
             <section className="mt-16 pt-10 border-t border-[color-mix(in_oklch,var(--ink)_14%,var(--paper))]">
               <div className="dateline mb-6">
                 The Shelf <span className="ember-bullet" /> Tools for this work

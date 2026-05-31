@@ -105,6 +105,10 @@ temp/
 *.sqlite
 *.sqlite3
 
+# Article data (canonical source is Bunny CDN, not git)
+data/articles/
+client/src/data/articles.json
+
 # Webdev artifacts (checkpoint zips, migrations, etc.)
 .webdev/
 
